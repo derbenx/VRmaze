@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cjx262frpj42o" path="res://xro3d.gd" id="1_fji6l"]
 [ext_resource type="Script" uid="uid://6dd3gqknwxak" path="res://maze.gd" id="1_y2yqg"]
+[ext_resource type="Script" path="res://narrator.gd" id="3_narrator"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fji6l"]
 radius = 0.3
@@ -46,3 +47,8 @@ environment = SubResource("Environment_fji6l")
 
 [node name="maze" type="Node3D" parent="." unique_id=97361700]
 script = ExtResource("1_y2yqg")
+
+[node name="Narrator" type="Node3D" parent="."]
+script = ExtResource("3_narrator")
+
+[node name="HTTPRequest" type="HTTPRequest" parent="Narrator"]
