@@ -25,8 +25,9 @@ func _ready():
 	place_player()
 
 func _input(event):
-	if event is InputEventKey and event.pressed and event.keycode == KEY_H:
+	if event is InputEventKey and event.pressed and (event.keycode == KEY_H or event.physical_keycode == KEY_H):
 		spheres = not spheres
+		print("Maze: Toggling spheres. Visible: ", spheres)
 		if marker_container:
 			marker_container.visible = spheres
 
@@ -289,6 +290,10 @@ func create_slab_segment(gx, gy, y_pos, mat, is_floor):
 		w = wall_thickness
 		d = wall_thickness
 
+	# Subtract small epsilon to avoid Z-fighting on seams
+	w -= 0.002
+	d -= 0.002
+
 	var mesh = MeshInstance3D.new()
 	var box = BoxMesh.new()
 	var thickness = wall_thickness * 1.5 # Thicker slab
@@ -317,6 +322,11 @@ func create_wall(gx, gy, floor_y):
 	if is_v: w = wall_thickness; d = cell_size - wall_thickness
 	elif is_h: w = cell_size - wall_thickness; d = wall_thickness
 	else: w = wall_thickness; d = wall_thickness
+
+	# Subtract small epsilon
+	w -= 0.002
+	d -= 0.002
+
 	box.size = Vector3(w, wall_height, d)
 	wall.mesh = box; wall.material_override = mat
 	wall.position = Vector3(gx * cell_size / 2.0, floor_y + wall_height / 2.0, gy * cell_size / 2.0)

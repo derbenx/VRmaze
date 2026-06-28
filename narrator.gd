@@ -80,8 +80,16 @@ func _process(delta):
 		return
 
 	var current_floor_idx = int((player.position.y + maze.wall_height / 2.0) / maze.wall_height)
+
+	# Handle state changes
+	if current_floor_idx != last_floor:
+		last_floor = current_floor_idx
+		has_left_start_room = false
+		_reset_heckle_timer()
+		last_room = Vector2i(-1, -1) # Force room change detection on new floor
+
 	if current_floor_idx < 0 or current_floor_idx >= maze.floors_data.size():
-		# Still allow victory check if we are above the top floor
+		# Victory check
 		if current_floor_idx >= maze.maze_floors and not has_won:
 			has_won = true
 			trigger_victory()
@@ -93,7 +101,14 @@ func _process(delta):
 	var ry = int(floor(player.position.z / cell_size)) + 1
 	var current_pos = Vector2i(rx, ry)
 
-	# Handle rope discovery
+	var room_changed = (current_pos != last_room)
+	if room_changed:
+		last_room = current_pos
+		_reset_heckle_timer()
+		if current_pos != data.start_room:
+			has_left_start_room = true
+
+	# Prioritize Rope Interactions
 	if player.near_rope:
 		if current_pos == data.end_room:
 			if current_floor_idx == 0:
@@ -103,42 +118,32 @@ func _process(delta):
 			elif not current_floor_idx in floors_congratulated:
 				floors_congratulated.append(current_floor_idx)
 				trigger_rope_instruction(current_floor_idx)
-			return # Prioritize exit rope
+			return # Exit early if near forward rope
 		elif current_pos == data.start_room and current_floor_idx > 0:
-			if has_left_start_room:
+			if has_left_start_room: # Only if they returned to it
 				if not has_found_down_rope:
 					has_found_down_rope = true
 					trigger_down_rope_instruction()
-				return # Prioritize down rope
+				return # Exit early if near backward rope
 
-	var zone_id = -1
-	if data.has("dead_end_zones") and data.dead_end_zones.has(current_pos):
-		zone_id = data.dead_end_zones[current_pos]
-
-	if current_pos != last_room or current_floor_idx != last_floor:
-		var floor_changed = (current_floor_idx != last_floor)
-		last_room = current_pos
-		last_floor = current_floor_idx
-		_reset_heckle_timer()
-
-		if floor_changed:
-			has_left_start_room = false
-
+	# Room Specific Triggers
+	if room_changed:
 		if current_pos == data.end_room:
-			# Exit room - we don't insult here.
 			last_zone_id = -1
 		elif current_pos == data.start_room:
-			# Start room - check for backtracking mockery
 			if has_left_start_room:
+				# Re-entering start room
 				if not start_room_visits.has(current_floor_idx):
 					start_room_visits[current_floor_idx] = 0
 				start_room_visits[current_floor_idx] += 1
 				trigger_backtracking_mockery(current_floor_idx)
-
+				has_left_start_room = false # Reset so we don't spam
 			last_zone_id = -1
 		else:
-			# Regular room - check for dead ends
-			has_left_start_room = true # Mark that we've left the start
+			# Dead end check
+			var zone_id = -1
+			if data.has("dead_end_zones") and data.dead_end_zones.has(current_pos):
+				zone_id = data.dead_end_zones[current_pos]
 
 			if zone_id != -1 and zone_id != last_zone_id:
 				last_zone_id = zone_id
@@ -146,15 +151,13 @@ func _process(delta):
 			elif zone_id == -1:
 				last_zone_id = -1
 	else:
-		# Player is staying in the same room
-		# Only increment idle timer if narrator isn't currently speaking
+		# Idling
 		if not DisplayServer.tts_is_speaking():
 			idle_timer += delta
 			if idle_timer >= next_heckle_time:
 				trigger_heckle(current_floor_idx, current_pos)
 				_reset_heckle_timer()
 		else:
-			# Reset timer while speaking to ensure dead space starts AFTER speech ends
 			idle_timer = 0.0
 
 func check_for_dead_end(floor_idx, zone_id):
@@ -177,7 +180,7 @@ func trigger_heckle(_floor_idx, room):
 	send_llama_request(prompt, "heckle")
 
 func trigger_backtracking_mockery(floor_idx: int):
-	var prompt = "Instruction: You are a " + personality + ". The player has managing to wander back to the START of the current floor (floor " + str(floor_idx) + "). Mock them for going in circles or being hopelessly lost. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
+	var prompt = "Instruction: You are a " + personality + ". The player managed to wander back to the START of the current floor (floor " + str(floor_idx) + "). Mock them for going in circles or being hopelessly lost. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Mocking player for backtracking to start of floor ", floor_idx, "...")
