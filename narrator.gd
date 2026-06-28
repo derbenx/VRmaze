@@ -82,7 +82,7 @@ func _process(delta):
 	if is_intro_playing:
 		return
 
-	var current_floor_idx = int((player.position.y + maze.wall_height / 2.0) / maze.wall_height)
+	var current_floor_idx = int(player.position.y / maze.y_per_floor)
 
 	# Handle state changes
 	if current_floor_idx != last_floor:

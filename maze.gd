@@ -11,6 +11,8 @@ extends Node3D
 
 var floors_data = [] # Array of Dictionaries {grid, solution_path, dead_ends, start_room, end_room}
 var marker_container: Node3D
+var slab_thickness: float = 0.4
+var y_per_floor: float = 3.4
 
 func _ready():
 	randomize()
@@ -234,12 +236,15 @@ func get_visited_neighbor_dir(grid, rx, ry):
 	return -1
 
 func build_maze():
+	slab_thickness = wall_thickness * 2.0
+	y_per_floor = wall_height + slab_thickness
+
 	for f in range(maze_floors):
 		var data = floors_data[f]
-		var floor_y = f * wall_height
-		build_floor(f, data, floor_y)
+		var floor_y_base = f * y_per_floor
+		build_floor(f, data, floor_y_base)
 
-func build_floor(f_idx, data, floor_y):
+func build_floor(f_idx, data, floor_y_base):
 	var grid = data.grid
 	var gsz_x = maze_width * 2 + 1
 	var gsz_y = maze_height * 2 + 1
@@ -252,26 +257,30 @@ func build_floor(f_idx, data, floor_y):
 			var is_start_hole = (f_idx > 0 and Vector2i((gx+1)/2, (gy+1)/2) == data.start_room and gx % 2 == 1 and gy % 2 == 1)
 
 			if not is_start_hole:
-				create_slab_segment(gx, gy, floor_y, mat, true)
+				# Floor slab at the very bottom of the floor stack
+				create_slab_segment(gx, gy, floor_y_base, mat, true)
 
 			# Ceiling for the very top floor
 			if f_idx == maze_floors - 1:
 				var is_end_hole = (Vector2i((gx+1)/2, (gy+1)/2) == data.end_room and gx % 2 == 1 and gy % 2 == 1)
 				if not is_end_hole:
-					create_slab_segment(gx, gy, floor_y + wall_height, mat, false)
+					# Ceiling slab sits above the walls
+					create_slab_segment(gx, gy, floor_y_base + slab_thickness + wall_height, mat, false)
 
+	# Walls sit on top of the floor slab
+	var wall_y_start = floor_y_base + slab_thickness
 	for y in range(gsz_y):
 		for x in range(gsz_x):
 			if grid[y][x] == 1:
-				create_wall(x, y, floor_y)
+				create_wall(x, y, wall_y_start)
 
 	# Create rope for all floors including the last one (to the roof)
-	create_rope(data.end_room, floor_y)
+	create_rope(data.end_room, floor_y_base)
 
-	if spheres:
-		visualize_path(data, floor_y)
+	# Always visualize path so it can be toggled via H key
+	visualize_path(data, floor_y_base + slab_thickness)
 
-func create_slab_segment(gx, gy, y_pos, mat, is_floor):
+func create_slab_segment(gx, gy, y_pos, mat, _is_floor):
 	var is_room = (gx % 2 == 1 and gy % 2 == 1)
 	var is_v = (gx % 2 == 0 and gy % 2 == 1)
 	var is_h = (gx % 2 == 1 and gy % 2 == 0)
@@ -290,22 +299,20 @@ func create_slab_segment(gx, gy, y_pos, mat, is_floor):
 		w = wall_thickness
 		d = wall_thickness
 
-	# Subtract epsilon to avoid Z-fighting on seams
+	# Subtract epsilon to avoid Z-fighting on horizontal seams
 	w -= 0.02
 	d -= 0.02
 
 	var mesh = MeshInstance3D.new()
 	var box = BoxMesh.new()
-	var thickness = wall_thickness * 1.5 # Thicker slab
-	box.size = Vector3(w, thickness, d)
+	box.size = Vector3(w, slab_thickness, d)
 	mesh.mesh = box
 	mesh.material_override = mat
-	# Floor slab center is slightly below floor_y, ceiling slab center is slightly above wall_height
-	var final_y = y_pos - thickness/2.0 if is_floor else y_pos + thickness/2.0
-	mesh.position = Vector3(gx * cell_size / 2.0, final_y, gy * cell_size / 2.0)
+	# Center the slab so its base is exactly at y_pos
+	mesh.position = Vector3(gx * cell_size / 2.0, y_pos + slab_thickness/2.0, gy * cell_size / 2.0)
 	add_child(mesh)
 
-	if is_floor:
+	if _is_floor:
 		var sb = StaticBody3D.new()
 		mesh.add_child(sb)
 		var cs = CollisionShape3D.new()
@@ -314,7 +321,7 @@ func create_slab_segment(gx, gy, y_pos, mat, is_floor):
 		cs.shape = bs
 		sb.add_child(cs)
 
-func create_wall(gx, gy, floor_y):
+func create_wall(gx, gy, y_pos):
 	var mat = StandardMaterial3D.new(); mat.albedo_color = Color(randf(), randf(), randf())
 	var wall = MeshInstance3D.new(); var box = BoxMesh.new()
 	var is_v = (gx % 2 == 0 and gy % 2 == 1); var is_h = (gx % 2 == 1 and gy % 2 == 0)
@@ -329,21 +336,22 @@ func create_wall(gx, gy, floor_y):
 
 	box.size = Vector3(w, wall_height, d)
 	wall.mesh = box; wall.material_override = mat
-	wall.position = Vector3(gx * cell_size / 2.0, floor_y + wall_height / 2.0, gy * cell_size / 2.0)
+	# Center the wall so its base is exactly at y_pos
+	wall.position = Vector3(gx * cell_size / 2.0, y_pos + wall_height / 2.0, gy * cell_size / 2.0)
 	add_child(wall)
 	var sb = StaticBody3D.new(); wall.add_child(sb)
 	var cs = CollisionShape3D.new(); var bs = BoxShape3D.new()
 	bs.size = box.size; cs.shape = bs; sb.add_child(cs)
 
-func create_rope(room, floor_y):
+func create_rope(room, floor_y_base):
 	var rope = MeshInstance3D.new(); var cyl = CylinderMesh.new()
-	# Rope is slightly taller than one floor to allow detection from floor above
-	var rope_h = wall_height * 1.1
+	# Rope spans from the current floor slab through the walls and into the floor above
+	var rope_h = y_per_floor * 1.1
 	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = rope_h
 	rope.mesh = cyl; var mat = StandardMaterial3D.new(); mat.albedo_color = Color(0.5, 0.4, 0.2)
 	rope.material_override = mat
-	# Positioned to go from current floor up into the next floor
-	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y + rope_h/2.0, room.y * cell_size - cell_size/2.0)
+	# Positioned with base at floor_y_base
+	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y_base + rope_h/2.0, room.y * cell_size - cell_size/2.0)
 	add_child(rope)
 	var area = Area3D.new(); area.name = "RopeArea"
 	var col = CollisionShape3D.new(); var cyl_shape = CylinderShape3D.new()

@@ -51,8 +51,11 @@ func check_rope() -> void:
 func on_leave_rope() -> void:
 	if maze:
 		# Snap camera to 0.5 of room height relative to current floor
-		var floor_y = floor(position.y / maze.wall_height) * maze.wall_height
-		position.y = floor_y + (maze.wall_height * 0.5) - 1.7 # Account for XRCamera3D offset
+		# New math: room space starts at floor_y + slab_thickness
+		var y_per = maze.y_per_floor
+		var f_idx = floor(position.y / y_per)
+		var floor_y_base = f_idx * y_per
+		position.y = floor_y_base + maze.slab_thickness + (maze.wall_height * 0.5) - 1.7
 
 func handle_movement(delta: float) -> void:
 	var direction = Vector3.ZERO
@@ -107,13 +110,11 @@ func handle_movement(delta: float) -> void:
 
 	# Clamp height while climbing to prevent floor skipping
 	if near_rope and maze:
-		var current_floor_y = floor(position.y / maze.wall_height) * maze.wall_height
-		var current_floor_idx = int(current_floor_y / maze.wall_height)
+		var y_per = maze.y_per_floor
+		var current_floor_idx = int((position.y + 1.7) / y_per)
+		var floor_y_base = current_floor_idx * y_per
 
-		var max_climb_height = 0.5
-		if current_floor_idx == 0:
-			max_climb_height = 1.5 # Allow climbing past 0.5 on the bottom floor
-
-		var max_h = current_floor_y + (maze.wall_height * max_climb_height) - 1.7
-		var min_h = current_floor_y - (maze.wall_height * 0.5) - 1.7
+		# Allow climbing into the next floor (base + floor_height + half room height)
+		var max_climb_offset = y_per + maze.slab_thickness + (maze.wall_height * 0.5)
+		var min_h = floor_y_base - 1.7
 		position.y = clamp(position.y, min_h, max_h)
