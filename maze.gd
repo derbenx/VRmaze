@@ -300,8 +300,8 @@ func create_slab_segment(gx, gy, y_pos, mat, _is_floor):
 		d = wall_thickness
 
 	# Subtract epsilon to avoid Z-fighting on horizontal seams
-	w -= 0.02
-	d -= 0.02
+	w -= 0.005
+	d -= 0.005
 
 	var mesh = MeshInstance3D.new()
 	var box = BoxMesh.new()
@@ -331,8 +331,8 @@ func create_wall(gx, gy, y_pos):
 	else: w = wall_thickness; d = wall_thickness
 
 	# Subtract epsilon
-	w -= 0.02
-	d -= 0.02
+	w -= 0.005
+	d -= 0.005
 
 	box.size = Vector3(w, wall_height, d)
 	wall.mesh = box; wall.material_override = mat

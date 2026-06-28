@@ -13,6 +13,7 @@ var xr_interface: XRInterface
 
 var near_rope: bool = false
 var was_near_rope: bool = false
+var climbing_rope_floor: int = -1
 
 func _ready() -> void:
 	xr_interface = XRServer.find_interface("OpenXR")
@@ -46,16 +47,21 @@ func check_rope() -> void:
 	for area in rope_detector.get_overlapping_areas():
 		if area.name == "RopeArea":
 			near_rope = true
+			if maze:
+				# Use floor of area center to identify which floor rope belongs to
+				climbing_rope_floor = int(area.global_position.y / maze.y_per_floor)
 			break
 
 func on_leave_rope() -> void:
-	if maze:
-		# Snap camera to 0.5 of room height relative to current floor
-		# New math: room space starts at floor_y + slab_thickness
+	if maze and climbing_rope_floor != -1:
+		# Snap player base safely to the level we were climbing to/from
 		var y_per = maze.y_per_floor
-		var f_idx = floor(position.y / y_per)
-		var floor_y_base = f_idx * y_per
-		position.y = floor_y_base + maze.slab_thickness + (maze.wall_height * 0.5) - 1.7
+		var target_floor = floor((position.y + 1.7) / y_per)
+		var floor_y_base = target_floor * y_per
+
+		# Set position so base is slightly above floor slab to avoid falling through or being stuck
+		position.y = floor_y_base + maze.slab_thickness + 0.15
+		climbing_rope_floor = -1
 
 func handle_movement(delta: float) -> void:
 	var direction = Vector3.ZERO
@@ -109,13 +115,14 @@ func handle_movement(delta: float) -> void:
 		position += (direction * movement_speed * delta) + (Vector3.UP * climb_dir * climb_speed * delta)
 
 	# Clamp height while climbing to prevent floor skipping
-	if near_rope and maze:
+	if near_rope and maze and climbing_rope_floor != -1:
 		var y_per = maze.y_per_floor
-		var current_floor_idx = int((position.y + 1.7) / y_per)
-		var floor_y_base = current_floor_idx * y_per
+		var floor_y_base = climbing_rope_floor * y_per
 
-		# Allow climbing into the next floor (base + floor_height + half room height)
-		var max_climb_offset = y_per + maze.slab_thickness + (maze.wall_height * 0.5)
-		var max_h = floor_y_base + max_climb_offset - 1.7
-		var min_h = floor_y_base - 1.7
-		position.y = clamp(position.y, min_h, max_h)
+		# Limit climb to current floor and one level above
+		var max_h = floor_y_base + y_per + (maze.wall_height * 0.5)
+		# Ensure min_h stays above floor base
+		var min_h = floor_y_base + maze.slab_thickness + 0.1
+
+		# Account for camera offset
+		position.y = clamp(position.y, min_h - 1.7, max_h - 1.7)
