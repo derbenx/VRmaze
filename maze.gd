@@ -5,6 +5,7 @@ extends Node3D
 @export var cell_size: float = 4.0
 @export var wall_thickness: float = 0.2
 @export var wall_height: float = 3.0
+@export var collisions: bool = true
 
 var grid = []
 var rooms_to_visit = []
@@ -257,7 +258,7 @@ func create_wall(gx, gy):
 	static_body.add_child(collision_shape)
 
 func place_player():
-	var player = get_parent().get_node("XROrigin3D")
+	var player = get_node("../Player")
 	if player:
 		# Always place at start of solution path (root)
 		if solution_path.size() > 0:

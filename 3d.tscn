@@ -3,19 +3,30 @@
 [ext_resource type="Script" uid="uid://cjx262frpj42o" path="res://xro3d.gd" id="1_fji6l"]
 [ext_resource type="Script" uid="uid://6dd3gqknwxak" path="res://maze.gd" id="1_y2yqg"]
 
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fji6l"]
+radius = 0.3
+height = 1.8
+
 [sub_resource type="Environment" id="Environment_fji6l"]
 
 [node name="Main" type="Node3D" unique_id=1393429658]
 
-[node name="XROrigin3D" type="XROrigin3D" parent="." unique_id=1000077756]
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1000077756]
 script = ExtResource("1_fji6l")
 
-[node name="XRCamera3D" type="XRCamera3D" parent="XROrigin3D" unique_id=1777157697]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_fji6l")
 
-[node name="Right" type="XRController3D" parent="XROrigin3D" unique_id=546209630]
+[node name="XROrigin3D" type="XROrigin3D" parent="Player"]
+
+[node name="XRCamera3D" type="XRCamera3D" parent="Player/XROrigin3D" unique_id=1777157697]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 0)
+
+[node name="Right" type="XRController3D" parent="Player/XROrigin3D" unique_id=546209630]
 tracker = &"right_hand"
 
-[node name="Left" type="XRController3D" parent="XROrigin3D" unique_id=1738699192]
+[node name="Left" type="XRController3D" parent="Player/XROrigin3D" unique_id=1738699192]
 tracker = &"left_hand"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1029646845]
