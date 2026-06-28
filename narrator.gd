@@ -21,6 +21,7 @@ var has_found_down_rope: bool = false
 var has_won: bool = false
 var floors_congratulated = [] # Array to track floor indices where player was congratulated for finding rope
 var start_room_visits = {} # {floor_idx: count}
+var has_left_start_room = false
 
 var request_queue = []
 var is_requesting = false
@@ -104,36 +105,41 @@ func _process(delta):
 				trigger_rope_instruction(current_floor_idx)
 			return # Prioritize exit rope
 		elif current_pos == data.start_room and current_floor_idx > 0:
-			if not has_found_down_rope:
-				has_found_down_rope = true
-				trigger_down_rope_instruction()
-			return # Prioritize down rope
+			if has_left_start_room:
+				if not has_found_down_rope:
+					has_found_down_rope = true
+					trigger_down_rope_instruction()
+				return # Prioritize down rope
 
 	var zone_id = -1
 	if data.has("dead_end_zones") and data.dead_end_zones.has(current_pos):
 		zone_id = data.dead_end_zones[current_pos]
 
 	if current_pos != last_room or current_floor_idx != last_floor:
+		var floor_changed = (current_floor_idx != last_floor)
 		last_room = current_pos
 		last_floor = current_floor_idx
 		_reset_heckle_timer()
 
-		# data is already defined above
+		if floor_changed:
+			has_left_start_room = false
+
 		if current_pos == data.end_room:
 			# Exit room - we don't insult here.
 			last_zone_id = -1
 		elif current_pos == data.start_room:
 			# Start room - check for backtracking mockery
-			if not start_room_visits.has(current_floor_idx):
-				start_room_visits[current_floor_idx] = 0
-			start_room_visits[current_floor_idx] += 1
-
-			if start_room_visits[current_floor_idx] > 1:
+			if has_left_start_room:
+				if not start_room_visits.has(current_floor_idx):
+					start_room_visits[current_floor_idx] = 0
+				start_room_visits[current_floor_idx] += 1
 				trigger_backtracking_mockery(current_floor_idx)
 
 			last_zone_id = -1
 		else:
 			# Regular room - check for dead ends
+			has_left_start_room = true # Mark that we've left the start
+
 			if zone_id != -1 and zone_id != last_zone_id:
 				last_zone_id = zone_id
 				check_for_dead_end(current_floor_idx, zone_id)
