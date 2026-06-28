@@ -7,9 +7,10 @@ extends Node3D
 @onready var maze = get_node("../maze")
 @onready var player = get_node("../Player")
 
-var visited_dead_ends = {} # Dictionary to track {floor_idx: {room: count}}
+var visited_dead_ends = {} # Dictionary to track {floor_idx: {zone_id: count}}
 var last_room = Vector2i(-1, -1)
 var last_floor = -1
+var last_zone_id = -1
 
 var idle_timer: float = 0.0
 var next_heckle_time: float = 0.0
@@ -50,17 +51,28 @@ func _process(delta):
 	var ry = int(floor(player.position.z / cell_size)) + 1
 	var current_room = Vector2i(rx, ry)
 
+	var data = maze.floors_data[current_floor]
+	var zone_id = -1
+	if data.has("dead_end_zones") and data.dead_end_zones.has(current_room):
+		zone_id = data.dead_end_zones[current_room]
+
 	if current_room != last_room or current_floor != last_floor:
 		last_room = current_room
 		last_floor = current_floor
-		_reset_heckle_timer()
-		check_for_dead_end(current_floor, current_room)
+
+		# Check if we've entered a new dead end zone
+		if zone_id != -1 and zone_id != last_zone_id:
+			last_zone_id = zone_id
+			_reset_heckle_timer()
+			check_for_dead_end(current_floor, zone_id)
+		elif zone_id == -1:
+			last_zone_id = -1
+			_reset_heckle_timer()
 	else:
 		# Player is staying in the same room
 		# Only increment idle timer if narrator isn't currently speaking
 		if not DisplayServer.tts_is_speaking():
-			var data = maze.floors_data[current_floor]
-			if current_room in data.dead_ends:
+			if zone_id != -1:
 				idle_timer += delta
 				if idle_timer >= next_heckle_time:
 					trigger_heckle(current_floor, current_room)
@@ -69,18 +81,17 @@ func _process(delta):
 			# Reset timer while speaking to ensure dead space starts AFTER speech ends
 			idle_timer = 0.0
 
-func check_for_dead_end(floor_idx, room):
-	var data = maze.floors_data[floor_idx]
-	if room in data.dead_ends:
+func check_for_dead_end(floor_idx, zone_id):
+	if zone_id != -1:
 		if not visited_dead_ends.has(floor_idx):
 			visited_dead_ends[floor_idx] = {}
 
-		if not visited_dead_ends[floor_idx].has(room):
-			visited_dead_ends[floor_idx][room] = 0
+		if not visited_dead_ends[floor_idx].has(zone_id):
+			visited_dead_ends[floor_idx][zone_id] = 0
 
-		visited_dead_ends[floor_idx][room] += 1
-		var count = visited_dead_ends[floor_idx][room]
-		trigger_insult(floor_idx, room, count)
+		visited_dead_ends[floor_idx][zone_id] += 1
+		var count = visited_dead_ends[floor_idx][zone_id]
+		trigger_insult(floor_idx, zone_id, count)
 
 func trigger_heckle(_floor_idx, room):
 	var prompt = "Instruction: You are a " + personality + " narrator. The player has been standing still in a dead end for a long time. Heckle them or see if they are still alive.\n"
@@ -89,7 +100,7 @@ func trigger_heckle(_floor_idx, room):
 	print("Narrator: Heckling player for idleness at ", room, "...")
 	send_llama_request(prompt)
 
-func trigger_insult(_floor_idx, room, count):
+func trigger_insult(_floor_idx, zone_id, count):
 	var context = "The player just hit a dead end."
 	if count > 1:
 		context = "The player has returned to the SAME dead end for the " + str(count) + " time."
@@ -97,7 +108,7 @@ func trigger_insult(_floor_idx, room, count):
 	var prompt = "Instruction: You are a " + personality + " narrator. " + context + " Provide a short, mean, and witty insult.\n"
 	prompt += "Response:"
 
-	print("Narrator: Insulting player for dead end at ", room, " (Visit count: ", count, ")...")
+	print("Narrator: Insulting player for dead end zone ", zone_id, " (Visit count: ", count, ")...")
 	send_llama_request(prompt)
 
 func send_llama_request(prompt: String):

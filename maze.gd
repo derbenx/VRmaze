@@ -129,7 +129,67 @@ func generate_single_floor(start_room: Vector2i) -> Dictionary:
 			if grid[wy][wx - 1] == 0: open += 1
 			if open == 1: dead_ends.append(Vector2i(tx, ty))
 
-	return { "grid": grid, "solution_path": solution_path, "dead_ends": dead_ends, "start_room": start_room, "end_room": end_room }
+	var zones = calculate_dead_end_zones(grid, dead_ends)
+	return { "grid": grid, "solution_path": solution_path, "dead_ends": dead_ends, "dead_end_zones": zones, "start_room": start_room, "end_room": end_room }
+
+func calculate_dead_end_zones(grid, dead_ends):
+	var zones = {} # Dictionary of { room: zone_id }
+	var zone_id_counter = 0
+
+	for de in dead_ends:
+		var current_zone = [de]
+		var curr = de
+		var prev = Vector2i(-1, -1)
+
+		# Trace back up to 5 rooms, but stop if we hit a junction or a turn
+		var last_dir = Vector2i(0, 0)
+		for i in range(4):
+			var next = get_only_open_neighbor(grid, curr, prev)
+			if next == Vector2i(-1, -1):
+				break
+
+			# Check if it's a junction (more than 2 openings)
+			var openings = count_openings(grid, next)
+			if openings > 2:
+				break
+
+			# Check if we turned
+			var current_dir = next - curr
+			if last_dir != Vector2i(0, 0) and current_dir != last_dir:
+				# We turned, stop tracing
+				break
+
+			current_zone.append(next)
+			last_dir = current_dir
+			prev = curr
+			curr = next
+
+		for room in current_zone:
+			zones[room] = zone_id_counter
+		zone_id_counter += 1
+
+	return zones
+
+func count_openings(grid, room):
+	var open = 0; var wx = room.x * 2 - 1; var wy = room.y * 2 - 1
+	if grid[wy - 1][wx] == 0: open += 1
+	if grid[wy][wx + 1] == 0: open += 1
+	if grid[wy + 1][wx] == 0: open += 1
+	if grid[wy][wx - 1] == 0: open += 1
+	return open
+
+func get_only_open_neighbor(grid, room, prev):
+	var wx = room.x * 2 - 1; var wy = room.y * 2 - 1
+	var neighbors = []
+	if grid[wy - 1][wx] == 0: neighbors.append(Vector2i(room.x, room.y - 1))
+	if grid[wy][wx + 1] == 0: neighbors.append(Vector2i(room.x + 1, room.y))
+	if grid[wy + 1][wx] == 0: neighbors.append(Vector2i(room.x, room.y + 1))
+	if grid[wy][wx - 1] == 0: neighbors.append(Vector2i(room.x - 1, room.y))
+
+	for n in neighbors:
+		if n != prev:
+			return n
+	return Vector2i(-1, -1)
 
 func get_unvisited_neighbors(grid, rx, ry):
 	var res = ""
@@ -263,9 +323,23 @@ func visualize_path(data, floor_y):
 		s.radius = 0.2; s.height = 0.4; m.mesh = s; m.material_override = p_mat
 		m.position = Vector3(r.x * cell_size - cell_size/2.0, floor_y + 0.5, r.y * cell_size - cell_size/2.0)
 		add_child(m)
+
 	var d_mat = StandardMaterial3D.new(); d_mat.albedo_color = Color(0, 0, 1); d_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+
+	# Visualize all rooms in dead end zones
+	var visualized_rooms = []
+	if data.has("dead_end_zones"):
+		for r in data.dead_end_zones.keys():
+			if r in data.solution_path: continue
+			visualized_rooms.append(r)
+			var m = MeshInstance3D.new(); var s = SphereMesh.new()
+			s.radius = 0.2; s.height = 0.4; m.mesh = s; m.material_override = d_mat
+			m.position = Vector3(r.x * cell_size - cell_size/2.0, floor_y + 0.5, r.y * cell_size - cell_size/2.0)
+			add_child(m)
+
+	# Fallback for base dead ends if zones aren't used or somehow missed some
 	for r in data.dead_ends:
-		if r in data.solution_path: continue
+		if r in data.solution_path or r in visualized_rooms: continue
 		var m = MeshInstance3D.new(); var s = SphereMesh.new()
 		s.radius = 0.2; s.height = 0.4; m.mesh = s; m.material_override = d_mat
 		m.position = Vector3(r.x * cell_size - cell_size/2.0, floor_y + 0.5, r.y * cell_size - cell_size/2.0)
