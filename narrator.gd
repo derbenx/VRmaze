@@ -7,17 +7,36 @@ extends Node3D
 @onready var maze = get_node("../maze")
 @onready var player = get_node("../Player")
 
-var visited_dead_ends = {} # Dictionary to track {floor_idx: [Vector2i, ...]}
+var visited_dead_ends = {} # Dictionary to track {floor_idx: {room: count}}
 var last_room = Vector2i(-1, -1)
 var last_floor = -1
+
+var idle_timer: float = 0.0
+var next_heckle_time: float = 0.0
 
 func _ready():
 	if not http_request:
 		http_request = HTTPRequest.new()
 		add_child(http_request)
 	http_request.request_completed.connect(_on_request_completed)
+	print("Narrator initialized. Llama URL: ", llama_url)
 
-func _process(_delta):
+	# Give the maze a moment to build before welcoming the player
+	get_tree().create_timer(1.0).timeout.connect(trigger_welcome)
+	_reset_heckle_timer()
+
+func _reset_heckle_timer():
+	next_heckle_time = randf_range(15.0, 25.0)
+	idle_timer = 0.0
+
+func trigger_welcome():
+	var prompt = "Instruction: You are a " + personality + " narrator. *try* and be nice, the player is just starting the game, give a welcome of some sort.\n"
+	prompt += "Response:"
+
+	print("Narrator: Requesting welcome message...")
+	send_llama_request(prompt)
+
+func _process(delta):
 	if not maze or not player or maze.floors_data.is_empty():
 		return
 
@@ -33,62 +52,94 @@ func _process(_delta):
 	if current_room != last_room or current_floor != last_floor:
 		last_room = current_room
 		last_floor = current_floor
+		_reset_heckle_timer()
 		check_for_dead_end(current_floor, current_room)
+	else:
+		# Player is staying in the same room
+		var data = maze.floors_data[current_floor]
+		if current_room in data.dead_ends:
+			idle_timer += delta
+			if idle_timer >= next_heckle_time:
+				trigger_heckle(current_floor, current_room)
+				_reset_heckle_timer()
 
 func check_for_dead_end(floor_idx, room):
 	var data = maze.floors_data[floor_idx]
 	if room in data.dead_ends:
 		if not visited_dead_ends.has(floor_idx):
-			visited_dead_ends[floor_idx] = []
+			visited_dead_ends[floor_idx] = {}
 
-		if not room in visited_dead_ends[floor_idx]:
-			visited_dead_ends[floor_idx].append(room)
-			trigger_insult(floor_idx, room)
+		if not visited_dead_ends[floor_idx].has(room):
+			visited_dead_ends[floor_idx][room] = 0
 
-func trigger_insult(_floor_idx, _room):
-	var prompt = "System: You are a narrator for a VR maze game. Your personality is " + personality + ". Do not use <thought> tags or perform internal reasoning. Respond immediately and concisely.\n"
-	prompt += "User: I just walked into another dead end in this maze. What do you have to say about that?\n"
-	prompt += "Assistant: "
+		visited_dead_ends[floor_idx][room] += 1
+		var count = visited_dead_ends[floor_idx][room]
+		trigger_insult(floor_idx, room, count)
 
+func trigger_heckle(_floor_idx, room):
+	var prompt = "Instruction: You are a " + personality + " narrator. The player has been standing still in a dead end for over 20 seconds. Heckle them or see if they are still alive.\n"
+	prompt += "Response:"
+
+	print("Narrator: Heckling player for idleness at ", room, "...")
+	send_llama_request(prompt)
+
+func trigger_insult(_floor_idx, room, count):
+	var context = "The player just hit a dead end."
+	if count > 1:
+		context = "The player has returned to the SAME dead end for the " + str(count) + " time."
+
+	var prompt = "Instruction: You are a " + personality + " narrator. " + context + " Provide a short, mean, and witty insult.\n"
+	prompt += "Response:"
+
+	print("Narrator: Insulting player for dead end at ", room, " (Visit count: ", count, ")...")
+	send_llama_request(prompt)
+
+func send_llama_request(prompt: String):
 	var body = JSON.stringify({
 		"prompt": prompt,
-		"n_predict": 128,
-		"stop": ["\n", "User:", "System:"],
-		"temperature": 0.8,
-		"include_reasoning": false
+		"n_predict": 96,
+		"stop": ["Instruction:", "Response:", "</s>"],
+		"temperature": 0.9,
+		"top_p": 0.9,
 	})
 
 	var headers = ["Content-Type: application/json"]
-	http_request.request(llama_url, headers, HTTPClient.METHOD_POST, body)
+	var err = http_request.request(llama_url, headers, HTTPClient.METHOD_POST, body)
+	if err != OK:
+		print("Narrator: Failed to send request: ", err)
 
 func _on_request_completed(_result, response_code, _headers, body):
+	var body_str = body.get_string_from_utf8()
 	if response_code == 200:
-		var json = JSON.parse_string(body.get_string_from_utf8())
+		var json = JSON.parse_string(body_str)
 		if json and json.has("content"):
-			var response = json["content"].strip_edges()
+			var response = json["content"]
 			process_response(response)
+		else:
+			print("Narrator: Unexpected response format: ", body_str)
 	else:
-		print("Error connecting to Llama: ", response_code)
+		print("Narrator: API Error ", response_code, ": ", body_str)
 
 func process_response(text: String):
-	# Remove <thought> tags if present
+	# 1. Strip thought tags
 	var filtered_text = text
-	while "<thought>" in filtered_text:
-		var start_idx = filtered_text.find("<thought>")
-		var end_idx = filtered_text.find("</thought>")
-		if end_idx != -1:
-			filtered_text = filtered_text.erase(start_idx, end_idx - start_idx + 10)
-		else:
-			# If </thought> is missing, just remove from <thought> to end
-			filtered_text = filtered_text.left(start_idx)
+	var regex = RegEx.new()
+	regex.compile("(?s)<thought>.*?</thought>")
+	filtered_text = regex.sub(filtered_text, "", true)
 
+	if "<thought>" in filtered_text:
+		filtered_text = filtered_text.split("<thought>")[0]
+
+	# 2. Final cleanup
 	filtered_text = filtered_text.strip_edges()
+
+	if filtered_text == "":
+		print("Narrator: (Received empty response content)")
+		return
 
 	print("Narrator: ", filtered_text)
 
 	# Godot TTS
 	var voices = DisplayServer.tts_get_voices_for_language("en")
-	if voices.size() > 0:
-		DisplayServer.tts_speak(filtered_text, voices[0])
-	else:
-		DisplayServer.tts_speak(filtered_text, "")
+	var voice_id = voices[0] if voices.size() > 0 else ""
+	DisplayServer.tts_speak(filtered_text, voice_id)
