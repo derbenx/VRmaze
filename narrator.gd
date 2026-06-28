@@ -1,7 +1,7 @@
 extends Node3D
 
 @export var llama_url: String = "http://127.0.0.1:8080/completion"
-@export var personality: String = "witty, sarcastic, maybe annoyed, insulting"
+@export var personality: String = "witty, sarcastic, annoyed, insulting"
 
 @onready var http_request: HTTPRequest = $HTTPRequest
 @onready var maze = get_node("../maze")
@@ -16,6 +16,10 @@ var idle_timer: float = 0.0
 var next_heckle_time: float = 0.0
 var is_intro_playing: bool = true
 var has_found_rope: bool = false
+var has_won: bool = false
+
+var request_queue = []
+var is_requesting = false
 
 func _ready():
 	if not http_request:
@@ -34,7 +38,7 @@ func _reset_heckle_timer():
 	idle_timer = 0.0
 
 func trigger_welcome():
-	var prompt = "Instruction: You are a " + personality + " narrator. *try* and be nice, the player is just starting the game, give a welcome of some sort.\n"
+	var prompt = "Instruction: You are a " + personality + " narrator. *try* and be nice, the player is just starting the game, give a welcome of some sort. Do not start with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
 	prompt += "Response:"
 
 	print("Narrator: Requesting welcome message...")
@@ -48,11 +52,20 @@ func _process(delta):
 		return
 
 	# Handle rope discovery
-	if player.near_rope and not has_found_rope:
-		has_found_rope = true
-		trigger_rope_instruction()
+	if player.near_rope:
+		if not has_found_rope:
+			has_found_rope = true
+			trigger_rope_instruction()
+		return # Prioritize rope and skip dead end insults while near one
 
 	var current_floor = int((player.position.y + maze.wall_height / 2.0) / maze.wall_height)
+
+	# Check for victory (reaching the roof)
+	if current_floor >= maze.maze_floors and not has_won:
+		has_won = true
+		trigger_victory()
+		return
+
 	if current_floor < 0 or current_floor >= maze.floors_data.size():
 		return
 
@@ -104,17 +117,24 @@ func check_for_dead_end(floor_idx, zone_id):
 		trigger_insult(floor_idx, zone_id, count)
 
 func trigger_heckle(_floor_idx, room):
-	var prompt = "Instruction: You are a " + personality + " narrator. The player has been standing still in a dead end for a long time. Heckle them or see if they are still alive.\n"
+	var prompt = "Instruction: You are a " + personality + " narrator. The player has been standing still in a dead end for a long time. Heckle them. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
 	prompt += "Response:"
 
 	print("Narrator: Heckling player for idleness at ", room, "...")
 	send_llama_request(prompt)
 
 func trigger_rope_instruction():
-	var prompt = "Instruction: You are a " + personality + " narrator. The player just found a climbing rope. Tell them to use 'Q' to climb up to the next floor. Be sarcastic.\n"
+	var prompt = "Instruction: You are a " + personality + " narrator. The player just found a climbing rope. Tell them to use 'Q' to climb up to the next floor. Be sarcastic and unique, don't use 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
 	prompt += "Response:"
 
 	print("Narrator: Triggering rope instruction...")
+	send_llama_request(prompt)
+
+func trigger_victory():
+	var prompt = "Instruction: You are a " + personality + " narrator. The player just finished the maze and climbed onto the roof. Provide a sarcastic, annoyed, and witty closing remark. Speak directly to the player. No stage directions.\n"
+	prompt += "Response:"
+
+	print("Narrator: Triggering victory message...")
 	send_llama_request(prompt)
 
 func trigger_insult(_floor_idx, zone_id, count):
@@ -122,16 +142,26 @@ func trigger_insult(_floor_idx, zone_id, count):
 	if count > 1:
 		context = "The player has returned to the SAME dead end for the " + str(count) + " time."
 
-	var prompt = "Instruction: You are a " + personality + " narrator. " + context + " Provide a short, mean, and witty insult.\n"
+	var prompt = "Instruction: You are a " + personality + " narrator. " + context + " Provide a short, mean, and witty insult. Vary your response, avoid starting with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
 	prompt += "Response:"
 
 	print("Narrator: Insulting player for dead end zone ", zone_id, " (Visit count: ", count, ")...")
 	send_llama_request(prompt)
 
 func send_llama_request(prompt: String):
+	request_queue.append(prompt)
+	_process_queue()
+
+func _process_queue():
+	if is_requesting or request_queue.is_empty():
+		return
+
+	is_requesting = true
+	var prompt = request_queue.pop_front()
+
 	var body = JSON.stringify({
 		"prompt": prompt,
-		"n_predict": 128,
+		"n_predict": 256,
 		"stop": ["Instruction:", "Response:", "</s>"],
 		"temperature": 0.9,
 		"top_p": 0.9,
@@ -141,8 +171,11 @@ func send_llama_request(prompt: String):
 	var err = http_request.request(llama_url, headers, HTTPClient.METHOD_POST, body)
 	if err != OK:
 		print("Narrator: Failed to send request: ", err)
+		is_requesting = false
+		_process_queue()
 
 func _on_request_completed(_result, response_code, _headers, body):
+	is_requesting = false
 	var body_str = body.get_string_from_utf8()
 	if response_code == 200:
 		var json = JSON.parse_string(body_str)
@@ -154,15 +187,22 @@ func _on_request_completed(_result, response_code, _headers, body):
 	else:
 		print("Narrator: API Error ", response_code, ": ", body_str)
 
+	_process_queue()
+
 func process_response(text: String):
 	# 1. Strip thought tags
 	var filtered_text = text
-	var regex = RegEx.new()
-	regex.compile("(?s)<thought>.*?</thought>")
-	filtered_text = regex.sub(filtered_text, "", true)
+	var thought_regex = RegEx.new()
+	thought_regex.compile("(?s)<thought>.*?</thought>")
+	filtered_text = thought_regex.sub(filtered_text, "", true)
 
 	if "<thought>" in filtered_text:
 		filtered_text = filtered_text.split("<thought>")[0]
+
+	# 2. Strip stage directions in parentheses or asterisks
+	var direction_regex = RegEx.new()
+	direction_regex.compile("(?s)\\(.*?\\)|\\*.*?\\*")
+	filtered_text = direction_regex.sub(filtered_text, "", true)
 
 	# 2. Final cleanup
 	filtered_text = filtered_text.strip_edges()

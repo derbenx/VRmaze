@@ -235,15 +235,17 @@ func build_floor(f_idx, data, floor_y):
 
 			# Ceiling for the very top floor
 			if f_idx == maze_floors - 1:
-				create_slab_segment(gx, gy, floor_y + wall_height, mat, false)
+				var is_end_hole = (Vector2i((gx+1)/2, (gy+1)/2) == data.end_room and gx % 2 == 1 and gy % 2 == 1)
+				if not is_end_hole:
+					create_slab_segment(gx, gy, floor_y + wall_height, mat, false)
 
 	for y in range(gsz_y):
 		for x in range(gsz_x):
 			if grid[y][x] == 1:
 				create_wall(x, y, floor_y)
 
-	if f_idx < maze_floors - 1:
-		create_rope(data.end_room, floor_y)
+	# Create rope for all floors including the last one (to the roof)
+	create_rope(data.end_room, floor_y)
 
 	if spheres:
 		visualize_path(data, floor_y)
@@ -305,15 +307,15 @@ func create_wall(gx, gy, floor_y):
 
 func create_rope(room, floor_y):
 	var rope = MeshInstance3D.new(); var cyl = CylinderMesh.new()
-	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = wall_height * 1.66
+	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = wall_height * 1.35
 	rope.mesh = cyl; var mat = StandardMaterial3D.new(); mat.albedo_color = Color(0.5, 0.4, 0.2)
 	rope.material_override = mat
 	# Start from the floor and go up, but not too far to prevent peeking
-	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y + (wall_height * 1.66 / 2.0), room.y * cell_size - cell_size/2.0)
+	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y + (wall_height * 1.35 / 2.0), room.y * cell_size - cell_size/2.0)
 	add_child(rope)
 	var area = Area3D.new(); area.name = "RopeArea"
 	var col = CollisionShape3D.new(); var cyl_shape = CylinderShape3D.new()
-	cyl_shape.radius = 0.5; cyl_shape.height = wall_height * 1.66
+	cyl_shape.radius = 0.5; cyl_shape.height = wall_height * 1.35
 	col.shape = cyl_shape; area.add_child(col); rope.add_child(area)
 
 func visualize_path(data, floor_y):
