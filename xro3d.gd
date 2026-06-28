@@ -5,9 +5,13 @@ var xr_interface: XRInterface
 @export var movement_speed: float = 5.0
 @export var turn_speed: float = 2.0
 @export var mouse_sensitivity: float = 0.002
+@export var climb_speed: float = 3.0
 
 @onready var camera = $XROrigin3D/XRCamera3D
 @onready var maze = get_node("../maze")
+@onready var rope_detector = $RopeDetector
+
+var near_rope: bool = false
 
 func _ready() -> void:
 	xr_interface = XRServer.find_interface("OpenXR")
@@ -18,10 +22,8 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		# Rotate camera for pitch
 		camera.rotate_x(-event.relative.y * mouse_sensitivity)
 		camera.rotation.x = clamp(camera.rotation.x, -PI/2, PI/2)
-		# Rotate CharacterBody3D for yaw
 		rotate_y(-event.relative.x * mouse_sensitivity)
 
 	if event.is_action_pressed("ui_cancel"):
@@ -31,7 +33,15 @@ func _input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _physics_process(delta: float) -> void:
+	check_rope()
 	handle_movement(delta)
+
+func check_rope() -> void:
+	near_rope = false
+	for area in rope_detector.get_overlapping_areas():
+		if area.name == "RopeArea":
+			near_rope = true
+			break
 
 func handle_movement(delta: float) -> void:
 	var direction = Vector3.ZERO
@@ -55,17 +65,31 @@ func handle_movement(delta: float) -> void:
 		if abs(input_vector.x) > 0.1:
 			rotate_y(-input_vector.x * turn_speed * delta)
 
-	# PC Height
-	if Input.is_key_pressed(KEY_Q): position.y += movement_speed * delta
-	if Input.is_key_pressed(KEY_E): position.y -= movement_speed * delta
+	# PC Height (Z/X)
+	if Input.is_key_pressed(KEY_Z): position.y += movement_speed * delta
+	if Input.is_key_pressed(KEY_X): position.y -= movement_speed * delta
+
+	# PC Climb/Descend (Q/E)
+	var climb_dir = 0.0
+	if near_rope:
+		if Input.is_key_pressed(KEY_Q): climb_dir += 1.0
+		if Input.is_key_pressed(KEY_E): climb_dir -= 1.0
+
+		# VR Climb (A/X) and Descend (B/Y)
+		if $XROrigin3D/Left:
+			if $XROrigin3D/Left.is_button_pressed("ax_button"): climb_dir += 1.0
+			if $XROrigin3D/Left.is_button_pressed("by_button"): climb_dir -= 1.0
+		if $XROrigin3D/Right:
+			if $XROrigin3D/Right.is_button_pressed("ax_button"): climb_dir += 1.0
+			if $XROrigin3D/Right.is_button_pressed("by_button"): climb_dir -= 1.0
 
 	if direction != Vector3.ZERO:
 		direction.y = 0
 		direction = direction.normalized()
 
 	if maze and maze.collisions:
-		velocity = direction * movement_speed
+		velocity = (direction * movement_speed) + (Vector3.UP * climb_dir * climb_speed)
 		move_and_slide()
 	else:
 		velocity = Vector3.ZERO
-		position += direction * movement_speed * delta
+		position += (direction * movement_speed * delta) + (Vector3.UP * climb_dir * climb_speed * delta)
