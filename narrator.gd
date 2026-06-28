@@ -79,7 +79,14 @@ func _process(delta):
 		return
 
 	var current_floor_idx = int((player.position.y + maze.wall_height / 2.0) / maze.wall_height)
+	if current_floor_idx < 0 or current_floor_idx >= maze.floors_data.size():
+		# Still allow victory check if we are above the top floor
+		if current_floor_idx >= maze.maze_floors and not has_won:
+			has_won = true
+			trigger_victory()
+		return
 
+	var data = maze.floors_data[current_floor_idx]
 	var cell_size = maze.cell_size
 	var rx = int(floor(player.position.x / cell_size)) + 1
 	var ry = int(floor(player.position.z / cell_size)) + 1
@@ -87,11 +94,6 @@ func _process(delta):
 
 	# Handle rope discovery
 	if player.near_rope:
-		if current_floor_idx < 0 or current_floor_idx >= maze.floors_data.size():
-			return
-
-		var data = maze.floors_data[current_floor_idx]
-
 		if current_pos == data.end_room:
 			if current_floor_idx == 0:
 				if not has_found_rope:
@@ -107,16 +109,6 @@ func _process(delta):
 				trigger_down_rope_instruction()
 			return # Prioritize down rope
 
-	# Check for victory (reaching the roof)
-	if current_floor_idx >= maze.maze_floors and not has_won:
-		has_won = true
-		trigger_victory()
-		return
-
-	if current_floor_idx < 0 or current_floor_idx >= maze.floors_data.size():
-		return
-
-	var data = maze.floors_data[current_floor_idx]
 	var zone_id = -1
 	if data.has("dead_end_zones") and data.dead_end_zones.has(current_pos):
 		zone_id = data.dead_end_zones[current_pos]
@@ -126,8 +118,7 @@ func _process(delta):
 		last_floor = current_floor_idx
 		_reset_heckle_timer()
 
-		var data = maze.floors_data[current_floor_idx]
-
+		# data is already defined above
 		if current_pos == data.end_room:
 			# Exit room - we don't insult here.
 			last_zone_id = -1

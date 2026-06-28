@@ -7,15 +7,28 @@ extends Node3D
 @export var wall_thickness: float = 0.2
 @export var wall_height: float = 3.0
 @export var collisions: bool = true
-@export var spheres: bool = true
+@export var spheres: bool = false
 
 var floors_data = [] # Array of Dictionaries {grid, solution_path, dead_ends, start_room, end_room}
+var marker_container: Node3D
 
 func _ready():
 	randomize()
 	generate_multi_floor_maze()
+
+	marker_container = Node3D.new()
+	marker_container.name = "MarkerContainer"
+	marker_container.visible = spheres
+	add_child(marker_container)
+
 	build_maze()
 	place_player()
+
+func _input(event):
+	if event is InputEventKey and event.pressed and event.keycode == KEY_H:
+		spheres = not spheres
+		if marker_container:
+			marker_container.visible = spheres
 
 func generate_multi_floor_maze():
 	floors_data = []
@@ -331,7 +344,7 @@ func visualize_path(data, floor_y):
 		var m = MeshInstance3D.new(); var s = SphereMesh.new()
 		s.radius = 0.2; s.height = 0.4; m.mesh = s; m.material_override = p_mat
 		m.position = Vector3(r.x * cell_size - cell_size/2.0, floor_y + 0.5, r.y * cell_size - cell_size/2.0)
-		add_child(m)
+		marker_container.add_child(m)
 
 	var d_mat = StandardMaterial3D.new(); d_mat.albedo_color = Color(0, 0, 1); d_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
 
@@ -344,7 +357,7 @@ func visualize_path(data, floor_y):
 			var m = MeshInstance3D.new(); var s = SphereMesh.new()
 			s.radius = 0.2; s.height = 0.4; m.mesh = s; m.material_override = d_mat
 			m.position = Vector3(r.x * cell_size - cell_size/2.0, floor_y + 0.5, r.y * cell_size - cell_size/2.0)
-			add_child(m)
+			marker_container.add_child(m)
 
 	# Fallback for base dead ends if zones aren't used or somehow missed some
 	for r in data.dead_ends:
@@ -352,7 +365,7 @@ func visualize_path(data, floor_y):
 		var m = MeshInstance3D.new(); var s = SphereMesh.new()
 		s.radius = 0.2; s.height = 0.4; m.mesh = s; m.material_override = d_mat
 		m.position = Vector3(r.x * cell_size - cell_size/2.0, floor_y + 0.5, r.y * cell_size - cell_size/2.0)
-		add_child(m)
+		marker_container.add_child(m)
 
 func place_player():
 	var player = get_node("../Player")
