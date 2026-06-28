@@ -127,7 +127,10 @@ func generate_single_floor(start_room: Vector2i) -> Dictionary:
 			if grid[wy][wx + 1] == 0: open += 1
 			if grid[wy + 1][wx] == 0: open += 1
 			if grid[wy][wx - 1] == 0: open += 1
-			if open == 1: dead_ends.append(Vector2i(tx, ty))
+			if open == 1:
+				var room = Vector2i(tx, ty)
+				if room != start_room and room != end_room:
+					dead_ends.append(room)
 
 	var zones = calculate_dead_end_zones(grid, dead_ends)
 	return { "grid": grid, "solution_path": solution_path, "dead_ends": dead_ends, "dead_end_zones": zones, "start_room": start_room, "end_room": end_room }
