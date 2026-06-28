@@ -26,7 +26,8 @@ func _ready():
 	_reset_heckle_timer()
 
 func _reset_heckle_timer():
-	next_heckle_time = randf_range(15.0, 25.0)
+	# Dead space of 2-5 minutes
+	next_heckle_time = randf_range(120.0, 300.0)
 	idle_timer = 0.0
 
 func trigger_welcome():
@@ -56,12 +57,17 @@ func _process(delta):
 		check_for_dead_end(current_floor, current_room)
 	else:
 		# Player is staying in the same room
-		var data = maze.floors_data[current_floor]
-		if current_room in data.dead_ends:
-			idle_timer += delta
-			if idle_timer >= next_heckle_time:
-				trigger_heckle(current_floor, current_room)
-				_reset_heckle_timer()
+		# Only increment idle timer if narrator isn't currently speaking
+		if not DisplayServer.tts_is_speaking():
+			var data = maze.floors_data[current_floor]
+			if current_room in data.dead_ends:
+				idle_timer += delta
+				if idle_timer >= next_heckle_time:
+					trigger_heckle(current_floor, current_room)
+					_reset_heckle_timer()
+		else:
+			# Reset timer while speaking to ensure dead space starts AFTER speech ends
+			idle_timer = 0.0
 
 func check_for_dead_end(floor_idx, room):
 	var data = maze.floors_data[floor_idx]
@@ -77,7 +83,7 @@ func check_for_dead_end(floor_idx, room):
 		trigger_insult(floor_idx, room, count)
 
 func trigger_heckle(_floor_idx, room):
-	var prompt = "Instruction: You are a " + personality + " narrator. The player has been standing still in a dead end for over 20 seconds. Heckle them or see if they are still alive.\n"
+	var prompt = "Instruction: You are a " + personality + " narrator. The player has been standing still in a dead end for a long time. Heckle them or see if they are still alive.\n"
 	prompt += "Response:"
 
 	print("Narrator: Heckling player for idleness at ", room, "...")
