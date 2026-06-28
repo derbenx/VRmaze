@@ -116,5 +116,6 @@ func handle_movement(delta: float) -> void:
 
 		# Allow climbing into the next floor (base + floor_height + half room height)
 		var max_climb_offset = y_per + maze.slab_thickness + (maze.wall_height * 0.5)
+		var max_h = floor_y_base + max_climb_offset - 1.7
 		var min_h = floor_y_base - 1.7
 		position.y = clamp(position.y, min_h, max_h)
