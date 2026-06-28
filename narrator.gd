@@ -20,6 +20,7 @@ var has_found_rope: bool = false
 var has_found_down_rope: bool = false
 var has_won: bool = false
 var floors_congratulated = [] # Array to track floor indices where player was congratulated for finding rope
+var start_room_visits = {} # {floor_idx: count}
 
 var request_queue = []
 var is_requesting = false
@@ -59,8 +60,8 @@ func _on_intro_failsafe():
 		is_intro_playing = false
 
 func _reset_heckle_timer():
-	# Dead space of 2-5 minutes
-	next_heckle_time = randf_range(120.0, 300.0)
+	# Idle anywhere for 5+ minutes
+	next_heckle_time = randf_range(300.0, 420.0)
 	idle_timer = 0.0
 
 func trigger_welcome():
@@ -123,24 +124,38 @@ func _process(delta):
 	if current_pos != last_room or current_floor_idx != last_floor:
 		last_room = current_pos
 		last_floor = current_floor_idx
+		_reset_heckle_timer()
 
-		# Check if we've entered a new dead end zone
-		if zone_id != -1 and zone_id != last_zone_id:
-			last_zone_id = zone_id
-			_reset_heckle_timer()
-			check_for_dead_end(current_floor_idx, zone_id)
-		elif zone_id == -1:
+		var data = maze.floors_data[current_floor_idx]
+
+		if current_pos == data.end_room:
+			# Exit room - we don't insult here.
 			last_zone_id = -1
-			_reset_heckle_timer()
+		elif current_pos == data.start_room:
+			# Start room - check for backtracking mockery
+			if not start_room_visits.has(current_floor_idx):
+				start_room_visits[current_floor_idx] = 0
+			start_room_visits[current_floor_idx] += 1
+
+			if start_room_visits[current_floor_idx] > 1:
+				trigger_backtracking_mockery(current_floor_idx)
+
+			last_zone_id = -1
+		else:
+			# Regular room - check for dead ends
+			if zone_id != -1 and zone_id != last_zone_id:
+				last_zone_id = zone_id
+				check_for_dead_end(current_floor_idx, zone_id)
+			elif zone_id == -1:
+				last_zone_id = -1
 	else:
 		# Player is staying in the same room
 		# Only increment idle timer if narrator isn't currently speaking
 		if not DisplayServer.tts_is_speaking():
-			if zone_id != -1:
-				idle_timer += delta
-				if idle_timer >= next_heckle_time:
-					trigger_heckle(current_floor_idx, current_pos)
-					_reset_heckle_timer()
+			idle_timer += delta
+			if idle_timer >= next_heckle_time:
+				trigger_heckle(current_floor_idx, current_pos)
+				_reset_heckle_timer()
 		else:
 			# Reset timer while speaking to ensure dead space starts AFTER speech ends
 			idle_timer = 0.0
@@ -158,11 +173,18 @@ func check_for_dead_end(floor_idx, zone_id):
 		trigger_insult(floor_idx, zone_id, count)
 
 func trigger_heckle(_floor_idx, room):
-	var prompt = "Instruction: You are a " + personality + ". The player has been standing still in a dead end for a long time. Heckle them. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
+	var prompt = "Instruction: You are a " + personality + ". The player has been standing still for a long time. Heckle them or ask if they are still alive. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Heckling player for idleness at ", room, "...")
 	send_llama_request(prompt, "heckle")
+
+func trigger_backtracking_mockery(floor_idx: int):
+	var prompt = "Instruction: You are a " + personality + ". The player has managing to wander back to the START of the current floor (floor " + str(floor_idx) + "). Mock them for going in circles or being hopelessly lost. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
+	prompt += "Response:"
+
+	print("Narrator: Mocking player for backtracking to start of floor ", floor_idx, "...")
+	send_llama_request(prompt, "rope_down") # Re-using rope_down fallback for backtracking
 
 func trigger_rope_instruction(floor_idx: int):
 	var context = "The player just found a climbing rope leading UP."

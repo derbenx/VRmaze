@@ -12,6 +12,7 @@ var xr_interface: XRInterface
 @onready var rope_detector = $RopeDetector
 
 var near_rope: bool = false
+var was_near_rope: bool = false
 
 func _ready() -> void:
 	xr_interface = XRServer.find_interface("OpenXR")
@@ -36,12 +37,22 @@ func _physics_process(delta: float) -> void:
 	check_rope()
 	handle_movement(delta)
 
+	if was_near_rope and not near_rope:
+		on_leave_rope()
+	was_near_rope = near_rope
+
 func check_rope() -> void:
 	near_rope = false
 	for area in rope_detector.get_overlapping_areas():
 		if area.name == "RopeArea":
 			near_rope = true
 			break
+
+func on_leave_rope() -> void:
+	if maze:
+		# Snap camera to 2/3 of room height relative to current floor
+		var floor_y = floor(position.y / maze.wall_height) * maze.wall_height
+		position.y = floor_y + (maze.wall_height * 2.0 / 3.0) - 1.7 # Account for XRCamera3D offset
 
 func handle_movement(delta: float) -> void:
 	var direction = Vector3.ZERO
