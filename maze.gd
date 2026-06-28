@@ -6,6 +6,7 @@ extends Node3D
 @export var wall_thickness: float = 0.2
 @export var wall_height: float = 3.0
 @export var collisions: bool = true
+@export var spheres: bool = true
 
 var grid = []
 var rooms_to_visit = []
@@ -14,11 +15,13 @@ var gsz_y: int
 
 var parents = {} # Dictionary to track parent of each room: Vector2i -> Vector2i
 var solution_path = [] # Array of Vector2i rooms
+var dead_ends = [] # Array of Vector2i rooms
 
 func _ready():
 	randomize()
 	generate_maze()
 	find_solution()
+	find_dead_ends()
 	build_maze()
 	place_player()
 
@@ -164,16 +167,28 @@ func find_solution():
 	solution_path = []
 	var current = end
 
-	# Since start is (1,1), if we picked a different random start room, we might need more logic
-	# but parents tracks the tree. If start room has no parent, we stop.
-
 	while parents.has(current):
 		solution_path.append(current)
 		current = parents[current]
 
-	solution_path.append(current) # This should be the root of the tree
-	# Note: If start room is not the root, this might not find path to (1,1) specifically
-	# but a path from end to SOME room that was chosen as start.
+	solution_path.append(current)
+
+func find_dead_ends():
+	dead_ends = []
+	for ty in range(1, maze_height + 1):
+		for tx in range(1, maze_width + 1):
+			var open_passages = 0
+			var wx = tx * 2 - 1
+			var wy = ty * 2 - 1
+
+			# Check neighbors in grid (up, right, down, left)
+			if grid[wy - 1][wx] == 0: open_passages += 1
+			if grid[wy][wx + 1] == 0: open_passages += 1
+			if grid[wy + 1][wx] == 0: open_passages += 1
+			if grid[wy][wx - 1] == 0: open_passages += 1
+
+			if open_passages == 1:
+				dead_ends.append(Vector2i(tx, ty))
 
 func build_maze():
 	var floor_mat = StandardMaterial3D.new()
@@ -203,20 +218,38 @@ func build_maze():
 			if grid[y][x] == 1:
 				create_wall(x, y)
 
-	# Visualize Path
-	var path_mat = StandardMaterial3D.new()
-	path_mat.albedo_color = Color(1, 0, 0)
-	path_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+	# Visualize Path and Dead Ends
+	if spheres:
+		var path_mat = StandardMaterial3D.new()
+		path_mat.albedo_color = Color(1, 0, 0)
+		path_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
 
-	for room in solution_path:
-		var marker = MeshInstance3D.new()
-		var sphere = SphereMesh.new()
-		sphere.radius = 0.2
-		sphere.height = 0.4
-		marker.mesh = sphere
-		marker.material_override = path_mat
-		marker.position = Vector3(room.x * cell_size - cell_size/2.0, 0.5, room.y * cell_size - cell_size/2.0)
-		add_child(marker)
+		for room in solution_path:
+			var marker = MeshInstance3D.new()
+			var sphere_mesh = SphereMesh.new()
+			sphere_mesh.radius = 0.2
+			sphere_mesh.height = 0.4
+			marker.mesh = sphere_mesh
+			marker.material_override = path_mat
+			marker.position = Vector3(room.x * cell_size - cell_size/2.0, 0.5, room.y * cell_size - cell_size/2.0)
+			add_child(marker)
+
+		var dead_end_mat = StandardMaterial3D.new()
+		dead_end_mat.albedo_color = Color(0, 0, 1)
+		dead_end_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+
+		for room in dead_ends:
+			# Don't mark if it's already part of the solution path (optional, usually start/end)
+			if room in solution_path: continue
+
+			var marker = MeshInstance3D.new()
+			var sphere_mesh = SphereMesh.new()
+			sphere_mesh.radius = 0.2
+			sphere_mesh.height = 0.4
+			marker.mesh = sphere_mesh
+			marker.material_override = dead_end_mat
+			marker.position = Vector3(room.x * cell_size - cell_size/2.0, 0.5, room.y * cell_size - cell_size/2.0)
+			add_child(marker)
 
 func create_wall(gx, gy):
 	var mat = StandardMaterial3D.new()
