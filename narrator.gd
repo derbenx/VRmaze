@@ -14,6 +14,8 @@ var last_zone_id = -1
 
 var idle_timer: float = 0.0
 var next_heckle_time: float = 0.0
+var is_intro_playing: bool = true
+var has_found_rope: bool = false
 
 func _ready():
 	if not http_request:
@@ -41,6 +43,14 @@ func trigger_welcome():
 func _process(delta):
 	if not maze or not player or maze.floors_data.is_empty():
 		return
+
+	if is_intro_playing:
+		return
+
+	# Handle rope discovery
+	if player.near_rope and not has_found_rope:
+		has_found_rope = true
+		trigger_rope_instruction()
 
 	var current_floor = int((player.position.y + maze.wall_height / 2.0) / maze.wall_height)
 	if current_floor < 0 or current_floor >= maze.floors_data.size():
@@ -100,6 +110,13 @@ func trigger_heckle(_floor_idx, room):
 	print("Narrator: Heckling player for idleness at ", room, "...")
 	send_llama_request(prompt)
 
+func trigger_rope_instruction():
+	var prompt = "Instruction: You are a " + personality + " narrator. The player just found a climbing rope. Tell them to use 'Q' to climb up to the next floor. Be sarcastic.\n"
+	prompt += "Response:"
+
+	print("Narrator: Triggering rope instruction...")
+	send_llama_request(prompt)
+
 func trigger_insult(_floor_idx, zone_id, count):
 	var context = "The player just hit a dead end."
 	if count > 1:
@@ -114,7 +131,7 @@ func trigger_insult(_floor_idx, zone_id, count):
 func send_llama_request(prompt: String):
 	var body = JSON.stringify({
 		"prompt": prompt,
-		"n_predict": 96,
+		"n_predict": 128,
 		"stop": ["Instruction:", "Response:", "</s>"],
 		"temperature": 0.9,
 		"top_p": 0.9,
@@ -149,6 +166,10 @@ func process_response(text: String):
 
 	# 2. Final cleanup
 	filtered_text = filtered_text.strip_edges()
+
+	# If we just finished the intro, allow other logic to run
+	if is_intro_playing:
+		is_intro_playing = false
 
 	if filtered_text == "":
 		print("Narrator: (Received empty response content)")
