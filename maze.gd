@@ -11,9 +11,13 @@ var rooms_to_visit = []
 var gsz_x: int
 var gsz_y: int
 
+var parents = {} # Dictionary to track parent of each room: Vector2i -> Vector2i
+var solution_path = [] # Array of Vector2i rooms
+
 func _ready():
 	randomize()
 	generate_maze()
+	find_solution()
 	build_maze()
 	place_player()
 
@@ -33,8 +37,8 @@ func generate_maze():
 		for ty in range(1, maze_height + 1):
 			rooms_to_visit.append(Vector2i(tx, ty))
 
-	# Start at a random room
-	var current_room = rooms_to_visit[randi() % rooms_to_visit.size()]
+	# Start at (1,1) room
+	var current_room = Vector2i(1, 1)
 	remove_room(current_room)
 	grid[current_room.y * 2 - 1][current_room.x * 2 - 1] = 0
 
@@ -54,6 +58,16 @@ func generate_maze():
 				var tmp_room = rooms_to_visit[randi() % rooms_to_visit.size()]
 				var visited_neighbor_dir = get_visited_neighbor_dir(tmp_room.x, tmp_room.y)
 				if visited_neighbor_dir != -1:
+					var parent_x = tmp_room.x
+					var parent_y = tmp_room.y
+					match visited_neighbor_dir:
+						0: parent_y -= 1
+						1: parent_x += 1
+						2: parent_y += 1
+						3: parent_x -= 1
+
+					parents[tmp_room] = Vector2i(parent_x, parent_y)
+
 					x = tmp_room.x
 					y = tmp_room.y
 					var wx = x * 2 - 1
@@ -67,9 +81,8 @@ func generate_maze():
 					remove_room(Vector2i(x, y))
 					grid[wy][wx] = 0
 					found = true
-			if not found: break # Should not happen
+			if not found: break
 		else:
-			# Porting the bias from js.js
 			var preferred_dl = dl
 			if preferred_dl.length() > 1:
 				if dc == 0: preferred_dl = preferred_dl.replace("2", "")
@@ -79,11 +92,9 @@ func generate_maze():
 
 			var tmp_dir = int(preferred_dl[randi() % preferred_dl.length()])
 
-			# dd logic from js.js
 			var threshold = log(maze_width * maze_height)
 			if int(threshold) > 1 and randi() % int(threshold) > 1:
 				if dl.contains(str(dc)):
-					# keep dc
 					pass
 				else:
 					dc = tmp_dir
@@ -98,13 +109,16 @@ func generate_maze():
 				2: y += 1
 				3: x -= 1
 
+			var next_room = Vector2i(x, y)
+			parents[next_room] = Vector2i(px, py)
+
 			# Break wall
 			if dc == 0: grid[py * 2 - 2][px * 2 - 1] = 0
 			elif dc == 1: grid[py * 2 - 1][px * 2] = 0
 			elif dc == 2: grid[py * 2][px * 2 - 1] = 0
 			elif dc == 3: grid[py * 2 - 1][px * 2 - 2] = 0
 
-			remove_room(Vector2i(x, y))
+			remove_room(next_room)
 			grid[y * 2 - 1][x * 2 - 1] = 0
 
 func remove_room(room: Vector2i):
@@ -142,6 +156,24 @@ func get_visited_neighbor_dir(rx, ry) -> int:
 				return d
 	return -1
 
+func find_solution():
+	var start = Vector2i(1, 1)
+	var end = Vector2i(maze_width, maze_height)
+
+	solution_path = []
+	var current = end
+
+	# Since start is (1,1), if we picked a different random start room, we might need more logic
+	# but parents tracks the tree. If start room has no parent, we stop.
+
+	while parents.has(current):
+		solution_path.append(current)
+		current = parents[current]
+
+	solution_path.append(current) # This should be the root of the tree
+	# Note: If start room is not the root, this might not find path to (1,1) specifically
+	# but a path from end to SOME room that was chosen as start.
+
 func build_maze():
 	var floor_mat = StandardMaterial3D.new()
 	floor_mat.albedo_color = Color(0.2, 0.2, 0.2)
@@ -152,13 +184,9 @@ func build_maze():
 	plane.size = Vector2(maze_width * cell_size, maze_height * cell_size)
 	floor_mesh.mesh = plane
 	floor_mesh.material_override = floor_mat
-	# Center the floor.
-	# Rooms go from x=0.5*cell_size to (maze_width-0.5)*cell_size
-	# Total width is maze_width*cell_size, centered at maze_width*cell_size/2
 	floor_mesh.position = Vector3(maze_width * cell_size / 2.0, 0, maze_height * cell_size / 2.0)
 	add_child(floor_mesh)
 
-	# Create a static body for the floor
 	var static_body = StaticBody3D.new()
 	floor_mesh.add_child(static_body)
 	var collision_shape = CollisionShape3D.new()
@@ -173,6 +201,21 @@ func build_maze():
 		for x in range(gsz_x):
 			if grid[y][x] == 1:
 				create_wall(x, y)
+
+	# Visualize Path
+	var path_mat = StandardMaterial3D.new()
+	path_mat.albedo_color = Color(1, 0, 0)
+	path_mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
+
+	for room in solution_path:
+		var marker = MeshInstance3D.new()
+		var sphere = SphereMesh.new()
+		sphere.radius = 0.2
+		sphere.height = 0.4
+		marker.mesh = sphere
+		marker.material_override = path_mat
+		marker.position = Vector3(room.x * cell_size - cell_size/2.0, 0.5, room.y * cell_size - cell_size/2.0)
+		add_child(marker)
 
 func create_wall(gx, gy):
 	var mat = StandardMaterial3D.new()
@@ -190,9 +233,9 @@ func create_wall(gx, gy):
 
 	if is_v_wall:
 		w_width = wall_thickness
-		w_depth = cell_size + wall_thickness
+		w_depth = cell_size - wall_thickness
 	elif is_h_wall:
-		w_width = cell_size + wall_thickness
+		w_width = cell_size - wall_thickness
 		w_depth = wall_thickness
 	elif is_corner:
 		w_width = wall_thickness
@@ -205,7 +248,6 @@ func create_wall(gx, gy):
 	wall.position = Vector3(gx * cell_size / 2.0, wall_height / 2.0, gy * cell_size / 2.0)
 	add_child(wall)
 
-	# Collision
 	var static_body = StaticBody3D.new()
 	wall.add_child(static_body)
 	var collision_shape = CollisionShape3D.new()
@@ -217,6 +259,9 @@ func create_wall(gx, gy):
 func place_player():
 	var player = get_parent().get_node("XROrigin3D")
 	if player:
-		# Place player in the middle of the first room (1,1)
-		# grid[1][1] center is at (cell_size/2, 0, cell_size/2)
-		player.position = Vector3(cell_size / 2.0, 0, cell_size / 2.0)
+		# Always place at start of solution path (root)
+		if solution_path.size() > 0:
+			var start_room = solution_path.back()
+			player.position = Vector3(start_room.x * cell_size - cell_size/2.0, 0, start_room.y * cell_size - cell_size/2.0)
+		else:
+			player.position = Vector3(cell_size / 2.0, 0, cell_size / 2.0)
