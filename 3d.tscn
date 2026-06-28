@@ -1,0 +1,27 @@
+[gd_scene format=3 uid="uid://c2t14uatgbd5w"]
+
+[ext_resource type="Script" uid="uid://cjx262frpj42o" path="res://xro3d.gd" id="1_fji6l"]
+[ext_resource type="Script" uid="uid://6dd3gqknwxak" path="res://node3d.gd" id="1_y2yqg"]
+
+[sub_resource type="Environment" id="Environment_fji6l"]
+
+[node name="Main" type="Node3D" unique_id=1393429658]
+
+[node name="XROrigin3D" type="XROrigin3D" parent="." unique_id=1000077756]
+script = ExtResource("1_fji6l")
+
+[node name="XRCamera3D" type="XRCamera3D" parent="XROrigin3D" unique_id=1777157697]
+
+[node name="Right" type="XRController3D" parent="XROrigin3D" unique_id=546209630]
+tracker = &"right_hand"
+
+[node name="Left" type="XRController3D" parent="XROrigin3D" unique_id=1738699192]
+tracker = &"left_hand"
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1029646845]
+environment = SubResource("Environment_fji6l")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1739743971]
+
+[node name="maze" type="Node3D" parent="." unique_id=97361700]
+script = ExtResource("1_y2yqg")
