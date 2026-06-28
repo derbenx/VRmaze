@@ -2,46 +2,33 @@ extends XROrigin3D
 
 var xr_interface: XRInterface
 
-@export var movement_speed: float = 2.0
-@export var turn_speed: float = 1.5
-@export var mouse_sensitivity: float = 0.005
-
-var is_right_click_pressed: bool = false
-var selected_node: MeshInstance3D = null
-var is_dragging: bool = false
-var drag_offset: Vector3
-var dragging_controller: Node = null
+@export var movement_speed: float = 5.0
+@export var turn_speed: float = 2.0
+@export var mouse_sensitivity: float = 0.002
 
 @onready var camera = $XRCamera3D
-@onready var maze = get_parent().get_node("maze")
 
 func _ready() -> void:
 	xr_interface = XRServer.find_interface("OpenXR")
 	if xr_interface and xr_interface.is_initialized():
 		get_viewport().use_xr = true
 
-	setup_vr_controller($Left)
-	setup_vr_controller($Right)
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-func setup_vr_controller(controller: XRController3D) -> void:
-	var ray = RayCast3D.new()
-	ray.name = "RayCast"
-	ray.target_position = Vector3(0, 0, -10)
-	ray.enabled = true
-	controller.add_child(ray)
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# PC Mouse look
+		# Rotate the camera for pitch
+		camera.rotate_x(-event.relative.y * mouse_sensitivity)
+		camera.rotation.x = clamp(camera.rotation.x, -PI/2, PI/2)
+		# Rotate the origin for yaw
+		rotate_y(-event.relative.x * mouse_sensitivity)
 
-	var laser = MeshInstance3D.new()
-	laser.name = "Laser"
-	var laser_mesh = BoxMesh.new()
-	laser_mesh.size = Vector3(0.005, 0.005, 10.0)
-	laser.mesh = laser_mesh
-	laser.position.z = -5.0
-	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(1, 0, 0, 0.5)
-	mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = StandardMaterial3D.TRANSPARENCY_ALPHA
-	laser.material_override = mat
-	controller.add_child(laser)
+	if event.is_action_pressed("ui_cancel"):
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _process(delta: float) -> void:
 	handle_pc_movement(delta)
@@ -49,25 +36,30 @@ func _process(delta: float) -> void:
 
 func handle_pc_movement(delta: float) -> void:
 	var direction = Vector3.ZERO
-	if Input.is_key_pressed(KEY_W): direction -= transform.basis.z
-	if Input.is_key_pressed(KEY_S): direction += transform.basis.z
-	if Input.is_key_pressed(KEY_Q): direction += transform.basis.y
-	if Input.is_key_pressed(KEY_E): direction -= transform.basis.y
-	if Input.is_key_pressed(KEY_UP): direction += transform.basis.y
-	if Input.is_key_pressed(KEY_DOWN): direction -= transform.basis.y
-	if Input.is_key_pressed(KEY_LEFT): direction -= transform.basis.x
-	if Input.is_key_pressed(KEY_RIGHT): direction += transform.basis.x
+	var basis = transform.basis
+
+	if Input.is_key_pressed(KEY_W): direction -= basis.z
+	if Input.is_key_pressed(KEY_S): direction += basis.z
+	if Input.is_key_pressed(KEY_A): direction -= basis.x
+	if Input.is_key_pressed(KEY_D): direction += basis.x
 
 	if direction != Vector3.ZERO:
+		# Keep movement on the ground
+		direction.y = 0
 		position += direction.normalized() * movement_speed * delta
 
-	if Input.is_key_pressed(KEY_A): rotate_y(turn_speed * delta)
-	if Input.is_key_pressed(KEY_D): rotate_y(-turn_speed * delta)
-
 func handle_vr_movement(delta: float) -> void:
+	# Left Stick for Movement
 	if $Left:
-		var p = $Left.get_vector2("primary")
-		position -= transform.basis.z * p.y * movement_speed * delta
+		var input_vector = $Left.get_vector2("primary")
+		if input_vector.length() > 0.1:
+			var basis = transform.basis
+			var direction = (-basis.z * input_vector.y) + (basis.x * input_vector.x)
+			direction.y = 0
+			position += direction.normalized() * movement_speed * delta * input_vector.length()
+
+	# Right Stick for Turning
 	if $Right:
-		var p = $Right.get_vector2("primary")
-		position += transform.basis.y * p.y * movement_speed * delta
+		var input_vector = $Right.get_vector2("primary")
+		if abs(input_vector.x) > 0.1:
+			rotate_y(-input_vector.x * turn_speed * delta)
