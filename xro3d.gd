@@ -50,9 +50,9 @@ func check_rope() -> void:
 
 func on_leave_rope() -> void:
 	if maze:
-		# Snap camera to 2/3 of room height relative to current floor
+		# Snap camera to 0.5 of room height relative to current floor
 		var floor_y = floor(position.y / maze.wall_height) * maze.wall_height
-		position.y = floor_y + (maze.wall_height * 2.0 / 3.0) - 1.7 # Account for XRCamera3D offset
+		position.y = floor_y + (maze.wall_height * 0.5) - 1.7 # Account for XRCamera3D offset
 
 func handle_movement(delta: float) -> void:
 	var direction = Vector3.ZERO
@@ -104,3 +104,16 @@ func handle_movement(delta: float) -> void:
 	else:
 		velocity = Vector3.ZERO
 		position += (direction * movement_speed * delta) + (Vector3.UP * climb_dir * climb_speed * delta)
+
+	# Clamp height while climbing to prevent floor skipping
+	if near_rope and maze:
+		var current_floor_y = floor(position.y / maze.wall_height) * maze.wall_height
+		var current_floor_idx = int(current_floor_y / maze.wall_height)
+
+		var max_climb_height = 0.5
+		if current_floor_idx == 0:
+			max_climb_height = 1.5 # Allow climbing past 0.5 on the bottom floor
+
+		var max_h = current_floor_y + (maze.wall_height * max_climb_height) - 1.7
+		var min_h = current_floor_y - (maze.wall_height * 0.5) - 1.7
+		position.y = clamp(position.y, min_h, max_h)

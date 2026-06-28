@@ -27,7 +27,7 @@ func _ready():
 func _input(event):
 	if event is InputEventKey and event.pressed and (event.keycode == KEY_H or event.physical_keycode == KEY_H):
 		spheres = not spheres
-		print("Maze: Toggling spheres. Visible: ", spheres)
+		print("Maze: Toggling spheres to: ", spheres)
 		if marker_container:
 			marker_container.visible = spheres
 
@@ -290,9 +290,9 @@ func create_slab_segment(gx, gy, y_pos, mat, is_floor):
 		w = wall_thickness
 		d = wall_thickness
 
-	# Subtract small epsilon to avoid Z-fighting on seams
-	w -= 0.002
-	d -= 0.002
+	# Subtract epsilon to avoid Z-fighting on seams
+	w -= 0.02
+	d -= 0.02
 
 	var mesh = MeshInstance3D.new()
 	var box = BoxMesh.new()
@@ -323,9 +323,9 @@ func create_wall(gx, gy, floor_y):
 	elif is_h: w = cell_size - wall_thickness; d = wall_thickness
 	else: w = wall_thickness; d = wall_thickness
 
-	# Subtract small epsilon
-	w -= 0.002
-	d -= 0.002
+	# Subtract epsilon
+	w -= 0.02
+	d -= 0.02
 
 	box.size = Vector3(w, wall_height, d)
 	wall.mesh = box; wall.material_override = mat
@@ -337,15 +337,17 @@ func create_wall(gx, gy, floor_y):
 
 func create_rope(room, floor_y):
 	var rope = MeshInstance3D.new(); var cyl = CylinderMesh.new()
-	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = wall_height * 2.0
+	# Rope is slightly taller than one floor to allow detection from floor above
+	var rope_h = wall_height * 1.1
+	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = rope_h
 	rope.mesh = cyl; var mat = StandardMaterial3D.new(); mat.albedo_color = Color(0.5, 0.4, 0.2)
 	rope.material_override = mat
-	# Center of rope is exactly at wall_height above current floor
-	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y + wall_height, room.y * cell_size - cell_size/2.0)
+	# Positioned to go from current floor up into the next floor
+	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y + rope_h/2.0, room.y * cell_size - cell_size/2.0)
 	add_child(rope)
 	var area = Area3D.new(); area.name = "RopeArea"
 	var col = CollisionShape3D.new(); var cyl_shape = CylinderShape3D.new()
-	cyl_shape.radius = 0.5; cyl_shape.height = wall_height * 2.0
+	cyl_shape.radius = 0.5; cyl_shape.height = rope_h
 	col.shape = cyl_shape; area.add_child(col); rope.add_child(area)
 
 func visualize_path(data, floor_y):
