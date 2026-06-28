@@ -3,6 +3,8 @@ extends Node3D
 @export var llama_url: String = "http://127.0.0.1:8080/completion"
 @export var personality: String = "witty, sarcastic, annoyed, and insulting narrator for this VR maze"
 @export var sentence_limit: int = 2
+@export var tts_rate: float = 1.15
+@export var tts_pitch: float = 1.05
 
 @onready var http_request: HTTPRequest = $HTTPRequest
 @onready var maze = get_node_or_null("../maze")
@@ -22,6 +24,7 @@ var has_won: bool = false
 var floors_congratulated = [] # Array to track floor indices where player was congratulated for finding rope
 var start_room_visits = {} # {floor_idx: count}
 var has_left_start_room = false
+var message_history = [] # Last 3 messages
 
 var request_queue = []
 var is_requesting = false
@@ -236,11 +239,17 @@ func _process_queue():
 
 	is_requesting = true
 	var item = request_queue.pop_front()
-	var prompt = item["prompt"]
+	var base_prompt = item["prompt"]
 	current_request_type = item["type"]
 
+	# Insert history into prompt to avoid repetition
+	var final_prompt = base_prompt
+	if not message_history.is_empty():
+		var history_str = "\n".join(message_history)
+		final_prompt = base_prompt.replace("Instruction:", "Instruction: Here is your recent dialogue history (avoid repeating these phrases and keep it flavourful!):\n" + history_str + "\n\nInstruction:")
+
 	var body = JSON.stringify({
-		"prompt": prompt,
+		"prompt": final_prompt,
 		"n_predict": 256,
 		"stop": ["Instruction:", "Response:", "</s>"],
 		"temperature": 0.9,
@@ -289,7 +298,9 @@ func _speak(text: String):
 	if text == "": return
 	var voices = DisplayServer.tts_get_voices_for_language("en")
 	var voice_id = voices[0] if voices.size() > 0 else ""
-	DisplayServer.tts_speak(text, voice_id)
+	# rate: 0.1 to 10.0, default 1.0
+	# pitch: 0.0 to 2.0, default 1.0
+	DisplayServer.tts_speak(text, voice_id, 50, tts_pitch, tts_rate)
 
 func process_response(text: String):
 	# 1. Strip thought tags
@@ -314,6 +325,11 @@ func process_response(text: String):
 		return
 
 	print("Narrator: ", filtered_text)
+
+	# Update history
+	message_history.append(filtered_text)
+	if message_history.size() > 3:
+		message_history.pop_front()
 
 	# Godot TTS
 	_speak(filtered_text)
