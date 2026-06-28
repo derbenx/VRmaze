@@ -2,10 +2,11 @@ extends Node3D
 
 @export var llama_url: String = "http://127.0.0.1:8080/completion"
 @export var personality: String = "witty, sarcastic, annoyed, and insulting narrator for this VR maze"
+@export var sentence_limit: int = 2
 
 @onready var http_request: HTTPRequest = $HTTPRequest
-@onready var maze = get_node("../maze")
-@onready var player = get_node("../Player")
+@onready var maze = get_node_or_null("../maze")
+@onready var player = get_node_or_null("../Player")
 
 var visited_dead_ends = {} # Dictionary to track {floor_idx: {zone_id: count}}
 var last_room = Vector2i(-1, -1)
@@ -22,17 +23,40 @@ var floors_congratulated = [] # Array to track floor indices where player was co
 
 var request_queue = []
 var is_requesting = false
+var current_request_type = ""
+
+var fallbacks = {
+	"welcome": "Welcome to this game, AI server was not found.",
+	"rope_up_0": "Use Q to climb the rope.",
+	"rope_up_n": "You found the exit rope. Climb up!",
+	"rope_down": "You're going backwards. The exit is the other way.",
+	"insult": "Dead end. Turn around.",
+	"heckle": "Are you still there? You haven't moved in a while.",
+	"victory": "Congratulations! You've reached the roof and finished the maze."
+}
 
 func _ready():
 	if not http_request:
 		http_request = HTTPRequest.new()
 		add_child(http_request)
+
+	if http_request.request_completed.is_connected(_on_request_completed):
+		http_request.request_completed.disconnect(_on_request_completed)
 	http_request.request_completed.connect(_on_request_completed)
+
 	print("Narrator initialized. Llama URL: ", llama_url)
 
 	# Give the maze a moment to build before welcoming the player
 	get_tree().create_timer(1.0).timeout.connect(trigger_welcome)
 	_reset_heckle_timer()
+
+	# Failsafe to ensure intro doesn't block forever
+	get_tree().create_timer(5.0).timeout.connect(_on_intro_failsafe)
+
+func _on_intro_failsafe():
+	if is_intro_playing:
+		print("Narrator: Intro failsafe triggered.")
+		is_intro_playing = false
 
 func _reset_heckle_timer():
 	# Dead space of 2-5 minutes
@@ -40,11 +64,11 @@ func _reset_heckle_timer():
 	idle_timer = 0.0
 
 func trigger_welcome():
-	var prompt = "Instruction: You are a " + personality + ". *try* and be nice, the player is just starting the game, give a welcome of some sort. Do not start with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
+	var prompt = "Instruction: You are a " + personality + ". *try* and be nice, the player is just starting the game, give a welcome of some sort. Do not start with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Requesting welcome message...")
-	send_llama_request(prompt)
+	send_llama_request(prompt, "welcome")
 
 func _process(delta):
 	if not maze or not player or maze.floors_data.is_empty():
@@ -55,15 +79,15 @@ func _process(delta):
 
 	var current_floor_idx = int((player.position.y + maze.wall_height / 2.0) / maze.wall_height)
 
+	var cell_size = maze.cell_size
+	var rx = int(floor(player.position.x / cell_size)) + 1
+	var ry = int(floor(player.position.z / cell_size)) + 1
+	var current_pos = Vector2i(rx, ry)
+
 	# Handle rope discovery
 	if player.near_rope:
 		if current_floor_idx < 0 or current_floor_idx >= maze.floors_data.size():
 			return
-
-		var cell_size = maze.cell_size
-		var rx = int(floor(player.position.x / cell_size)) + 1
-		var ry = int(floor(player.position.z / cell_size)) + 1
-		var current_pos = Vector2i(rx, ry)
 
 		var data = maze.floors_data[current_floor_idx]
 
@@ -91,18 +115,13 @@ func _process(delta):
 	if current_floor_idx < 0 or current_floor_idx >= maze.floors_data.size():
 		return
 
-	var cell_size = maze.cell_size
-	var rx = int(floor(player.position.x / cell_size)) + 1
-	var ry = int(floor(player.position.z / cell_size)) + 1
-	var current_room = Vector2i(rx, ry)
-
 	var data = maze.floors_data[current_floor_idx]
 	var zone_id = -1
-	if data.has("dead_end_zones") and data.dead_end_zones.has(current_room):
-		zone_id = data.dead_end_zones[current_room]
+	if data.has("dead_end_zones") and data.dead_end_zones.has(current_pos):
+		zone_id = data.dead_end_zones[current_pos]
 
-	if current_room != last_room or current_floor_idx != last_floor:
-		last_room = current_room
+	if current_pos != last_room or current_floor_idx != last_floor:
+		last_room = current_pos
 		last_floor = current_floor_idx
 
 		# Check if we've entered a new dead end zone
@@ -120,7 +139,7 @@ func _process(delta):
 			if zone_id != -1:
 				idle_timer += delta
 				if idle_timer >= next_heckle_time:
-					trigger_heckle(current_floor_idx, current_room)
+					trigger_heckle(current_floor_idx, current_pos)
 					_reset_heckle_timer()
 		else:
 			# Reset timer while speaking to ensure dead space starts AFTER speech ends
@@ -139,52 +158,54 @@ func check_for_dead_end(floor_idx, zone_id):
 		trigger_insult(floor_idx, zone_id, count)
 
 func trigger_heckle(_floor_idx, room):
-	var prompt = "Instruction: You are a " + personality + ". The player has been standing still in a dead end for a long time. Heckle them. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
+	var prompt = "Instruction: You are a " + personality + ". The player has been standing still in a dead end for a long time. Heckle them. Avoid repetitive phrases like 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Heckling player for idleness at ", room, "...")
-	send_llama_request(prompt)
+	send_llama_request(prompt, "heckle")
 
 func trigger_rope_instruction(floor_idx: int):
 	var context = "The player just found a climbing rope leading UP."
+	var type = "rope_up_n"
 	if floor_idx == 0:
 		context += " Tell them to use 'Q' to climb up to the next floor."
+		type = "rope_up_0"
 	else:
 		context += " Sarcastically congratulate them for finding the way out of this floor."
 
-	var prompt = "Instruction: You are a " + personality + ". " + context + " Be sarcastic and unique, don't use 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
+	var prompt = "Instruction: You are a " + personality + ". " + context + " Be sarcastic and unique, don't use 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Triggering rope UP instruction for floor ", floor_idx, "...")
-	send_llama_request(prompt)
+	send_llama_request(prompt, type)
 
 func trigger_down_rope_instruction():
-	var prompt = "Instruction: You are a " + personality + ". The player just found a climbing rope leading DOWN to the previous floor. Mock them for finding a way to go backwards or for being lost. Be sarcastic and unique, don't use 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
+	var prompt = "Instruction: You are a " + personality + ". The player just found a climbing rope leading DOWN to the previous floor. Mock them for finding a way to go backwards or for being lost. Be sarcastic and unique, don't use 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Triggering rope DOWN instruction...")
-	send_llama_request(prompt)
+	send_llama_request(prompt, "rope_down")
 
 func trigger_victory():
-	var prompt = "Instruction: You are a " + personality + ". The player just finished the maze and climbed onto the roof. Provide a sarcastic, annoyed, and witty closing remark. Speak directly to the player. No stage directions.\n"
+	var prompt = "Instruction: You are a " + personality + ". The player just finished the maze and climbed onto the roof. Provide a sarcastic, annoyed, and witty closing remark. Speak directly to the player. No stage directions. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Triggering victory message...")
-	send_llama_request(prompt)
+	send_llama_request(prompt, "victory")
 
 func trigger_insult(_floor_idx, zone_id, count):
 	var context = "The player just hit a dead end."
 	if count > 1:
 		context = "The player has returned to the SAME dead end for the " + str(count) + " time."
 
-	var prompt = "Instruction: You are a " + personality + ". " + context + " Provide a short, mean, and witty insult. Vary your response, avoid starting with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
+	var prompt = "Instruction: You are a " + personality + ". " + context + " Provide a short, mean, and witty insult. Vary your response, avoid starting with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
 	prompt += "Response:"
 
 	print("Narrator: Insulting player for dead end zone ", zone_id, " (Visit count: ", count, ")...")
-	send_llama_request(prompt)
+	send_llama_request(prompt, "insult")
 
-func send_llama_request(prompt: String):
-	request_queue.append(prompt)
+func send_llama_request(prompt: String, type: String):
+	request_queue.append({"prompt": prompt, "type": type})
 	_process_queue()
 
 func _process_queue():
@@ -192,7 +213,9 @@ func _process_queue():
 		return
 
 	is_requesting = true
-	var prompt = request_queue.pop_front()
+	var item = request_queue.pop_front()
+	var prompt = item["prompt"]
+	current_request_type = item["type"]
 
 	var body = JSON.stringify({
 		"prompt": prompt,
@@ -206,11 +229,19 @@ func _process_queue():
 	var err = http_request.request(llama_url, headers, HTTPClient.METHOD_POST, body)
 	if err != OK:
 		print("Narrator: Failed to send request: ", err)
+		if is_intro_playing and current_request_type == "welcome":
+			is_intro_playing = false
+		_trigger_fallback(current_request_type)
 		is_requesting = false
 		_process_queue()
 
 func _on_request_completed(_result, response_code, _headers, body):
 	is_requesting = false
+
+	# If we were in intro mode, we are definitely done with the intro now regardless of success
+	if is_intro_playing:
+		is_intro_playing = false
+
 	var body_str = body.get_string_from_utf8()
 	if response_code == 200:
 		var json = JSON.parse_string(body_str)
@@ -219,10 +250,24 @@ func _on_request_completed(_result, response_code, _headers, body):
 			process_response(response)
 		else:
 			print("Narrator: Unexpected response format: ", body_str)
+			_trigger_fallback(current_request_type)
 	else:
 		print("Narrator: API Error ", response_code, ": ", body_str)
+		_trigger_fallback(current_request_type)
 
 	_process_queue()
+
+func _trigger_fallback(type: String):
+	if fallbacks.has(type):
+		var text = fallbacks[type]
+		print("Narrator (Fallback): ", text)
+		_speak(text)
+
+func _speak(text: String):
+	if text == "": return
+	var voices = DisplayServer.tts_get_voices_for_language("en")
+	var voice_id = voices[0] if voices.size() > 0 else ""
+	DisplayServer.tts_speak(text, voice_id)
 
 func process_response(text: String):
 	# 1. Strip thought tags
@@ -242,10 +287,6 @@ func process_response(text: String):
 	# 3. Final cleanup
 	filtered_text = filtered_text.strip_edges()
 
-	# If we just finished the intro, allow other logic to run
-	if is_intro_playing:
-		is_intro_playing = false
-
 	if filtered_text == "":
 		print("Narrator: (Received empty response content)")
 		return
@@ -253,6 +294,4 @@ func process_response(text: String):
 	print("Narrator: ", filtered_text)
 
 	# Godot TTS
-	var voices = DisplayServer.tts_get_voices_for_language("en")
-	var voice_id = voices[0] if voices.size() > 0 else ""
-	DisplayServer.tts_speak(filtered_text, voice_id)
+	_speak(filtered_text)

@@ -175,19 +175,23 @@ func calculate_dead_end_zones(grid, dead_ends):
 
 func count_openings(grid, room):
 	var open = 0; var wx = room.x * 2 - 1; var wy = room.y * 2 - 1
-	if grid[wy - 1][wx] == 0: open += 1
-	if grid[wy][wx + 1] == 0: open += 1
-	if grid[wy + 1][wx] == 0: open += 1
-	if grid[wy][wx - 1] == 0: open += 1
+	var rows = grid.size()
+	var cols = grid[0].size()
+	if wy - 1 >= 0 and grid[wy - 1][wx] == 0: open += 1
+	if wx + 1 < cols and grid[wy][wx + 1] == 0: open += 1
+	if wy + 1 < rows and grid[wy + 1][wx] == 0: open += 1
+	if wx - 1 >= 0 and grid[wy][wx - 1] == 0: open += 1
 	return open
 
 func get_only_open_neighbor(grid, room, prev):
 	var wx = room.x * 2 - 1; var wy = room.y * 2 - 1
 	var neighbors = []
-	if grid[wy - 1][wx] == 0: neighbors.append(Vector2i(room.x, room.y - 1))
-	if grid[wy][wx + 1] == 0: neighbors.append(Vector2i(room.x + 1, room.y))
-	if grid[wy + 1][wx] == 0: neighbors.append(Vector2i(room.x, room.y + 1))
-	if grid[wy][wx - 1] == 0: neighbors.append(Vector2i(room.x - 1, room.y))
+	var rows = grid.size()
+	var cols = grid[0].size()
+	if wy - 1 >= 0 and grid[wy - 1][wx] == 0: neighbors.append(Vector2i(room.x, room.y - 1))
+	if wx + 1 < cols and grid[wy][wx + 1] == 0: neighbors.append(Vector2i(room.x + 1, room.y))
+	if wy + 1 < rows and grid[wy + 1][wx] == 0: neighbors.append(Vector2i(room.x, room.y + 1))
+	if wx - 1 >= 0 and grid[wy][wx - 1] == 0: neighbors.append(Vector2i(room.x - 1, room.y))
 
 	for n in neighbors:
 		if n != prev:
