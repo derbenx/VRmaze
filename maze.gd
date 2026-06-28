@@ -143,9 +143,6 @@ func get_visited_neighbor_dir(rx, ry) -> int:
 	return -1
 
 func build_maze():
-	var wall_mat = StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(0.7, 0.7, 0.7)
-
 	var floor_mat = StandardMaterial3D.new()
 	floor_mat.albedo_color = Color(0.2, 0.2, 0.2)
 
@@ -175,9 +172,12 @@ func build_maze():
 	for y in range(gsz_y):
 		for x in range(gsz_x):
 			if grid[y][x] == 1:
-				create_wall(x, y, wall_mat)
+				create_wall(x, y)
 
-func create_wall(gx, gy, mat):
+func create_wall(gx, gy):
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color(randf(), randf(), randf())
+
 	var wall = MeshInstance3D.new()
 	var box = BoxMesh.new()
 

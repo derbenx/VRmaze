@@ -43,6 +43,9 @@ func handle_pc_movement(delta: float) -> void:
 	if Input.is_key_pressed(KEY_A): direction -= basis.x
 	if Input.is_key_pressed(KEY_D): direction += basis.x
 
+	if Input.is_key_pressed(KEY_Q): position.y += movement_speed * delta
+	if Input.is_key_pressed(KEY_E): position.y -= movement_speed * delta
+
 	if direction != Vector3.ZERO:
 		# Keep movement on the ground
 		direction.y = 0
