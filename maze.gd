@@ -355,16 +355,17 @@ func create_wall(gx, gy, y_pos):
 
 func create_rope(room, floor_y_base):
 	var rope = MeshInstance3D.new(); var cyl = CylinderMesh.new()
-	# Rope hangs from the upper floor's ceiling slab, ending 1/4 wall_height above the floor.
-	# Total span: slab_thickness + wall_height * 0.75 (within room) + slab_thickness (of floor above)
-	# Simplification: Spans from ceiling base down to 0.25 room height.
-	var rope_h = wall_height * 0.75 + slab_thickness
+	# Rope spans from the floor below up through the hole into the floor above.
+	# It hangs from the upper ceiling (slab_thickness + wall_height + slab_thickness).
+	# Bottom end is at 0.25 room height of current floor.
+	var rope_h = y_per_floor + (wall_height * 0.75)
 	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = rope_h
 	rope.mesh = cyl; var mat = StandardMaterial3D.new(); mat.albedo_color = Color(0.5, 0.4, 0.2)
 	rope.material_override = mat
-	# Top of rope is at floor_y_base + y_per_floor (base of floor above)
-	# Center is at floor_y_base + y_per_floor - rope_h/2.0
-	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y_base + y_per_floor - rope_h/2.0, room.y * cell_size - cell_size/2.0)
+	# Top of rope is at floor_y_base + y_per_floor + slab_thickness (ceiling top)
+	# Position is center. y_center = top - rope_h/2.0
+	var y_center = (floor_y_base + y_per_floor + slab_thickness) - (rope_h / 2.0)
+	rope.position = Vector3(room.x * cell_size - cell_size/2.0, y_center, room.y * cell_size - cell_size/2.0)
 	add_child(rope)
 	var area = Area3D.new(); area.name = "RopeArea"
 	var col = CollisionShape3D.new(); var cyl_shape = CylinderShape3D.new()
@@ -404,5 +405,5 @@ func place_player():
 	var player = get_node_or_null("../Player")
 	if player:
 		var start = floors_data[0].start_room
-		# Feet should be exactly at top of floor slab
+		# Safe player base placement (top of floor slab + buffer)
 		player.position = Vector3(start.x * cell_size - cell_size/2.0, slab_thickness + 0.1, start.y * cell_size - cell_size/2.0)

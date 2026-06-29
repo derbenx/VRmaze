@@ -54,14 +54,13 @@ func check_rope() -> void:
 
 func on_leave_rope() -> void:
 	if maze and climbing_rope_floor != -1:
-		# DECISION: decidewhich floor we land on based on eye level
+		# DECISION: decide which floor we land on based on eye level
 		var y_per = maze.y_per_floor
 		var target_floor = floor((position.y + 1.6) / y_per)
 		var floor_y_base = target_floor * y_per
 
-		# Eyes at 0.6 room height is a better natural eye-level (1.8m in 3.0m room)
-		# Feet = floor_base + slab + 0.1 (offset)
-		position.y = floor_y_base + maze.slab_thickness + 0.1
+		# Snap eyes to exactly 0.5 room height
+		position.y = floor_y_base + maze.slab_thickness + (maze.wall_height * 0.5) - 1.7
 		velocity = Vector3.ZERO
 		climbing_rope_floor = -1
 
@@ -120,8 +119,8 @@ func handle_movement(delta: float) -> void:
 	if near_rope and maze and climbing_rope_floor != -1:
 		var y_per = maze.y_per_floor
 
-		# Range for feet: base of floor below to midpoint of floor leading TO
-		var min_feet = (climbing_rope_floor - 1) * y_per + maze.slab_thickness + 0.05
+		# Allow climbing from eye-level of current floor to eye-level of target floor
+		var min_feet = (climbing_rope_floor - 1) * y_per + maze.slab_thickness + 0.1
 		var max_feet = (climbing_rope_floor) * y_per + maze.slab_thickness + (maze.wall_height * 0.6)
 
 		position.y = clamp(position.y, min_feet, max_feet)
