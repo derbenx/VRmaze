@@ -48,19 +48,20 @@ func check_rope() -> void:
 		if area.name == "RopeArea":
 			near_rope = true
 			if maze:
-				# Use floor of area center to identify which floor rope belongs to
+				# Identifying the floor the rope LEADS TO based on its center
 				climbing_rope_floor = int(area.global_position.y / maze.y_per_floor)
 			break
 
 func on_leave_rope() -> void:
 	if maze and climbing_rope_floor != -1:
-		# Snap player base safely to the level we were climbing to/from
+		# Snap camera to 0.5 of room height relative to current floor
 		var y_per = maze.y_per_floor
-		var target_floor = floor((position.y + 1.7) / y_per)
+		var target_floor = floor((position.y + 0.9) / y_per)
 		var floor_y_base = target_floor * y_per
 
-		# Set position so base is slightly above floor slab to avoid falling through or being stuck
-		position.y = floor_y_base + maze.slab_thickness + 0.15
+		# Set position so camera is at 0.5 room height
+		position.y = floor_y_base + maze.slab_thickness + (maze.wall_height * 0.5) - 1.7
+		velocity = Vector3.ZERO
 		climbing_rope_floor = -1
 
 func handle_movement(delta: float) -> void:
@@ -117,12 +118,9 @@ func handle_movement(delta: float) -> void:
 	# Clamp height while climbing to prevent floor skipping
 	if near_rope and maze and climbing_rope_floor != -1:
 		var y_per = maze.y_per_floor
-		var floor_y_base = climbing_rope_floor * y_per
 
-		# Limit climb to current floor and one level above
-		var max_h = floor_y_base + y_per + (maze.wall_height * 0.5)
-		# Ensure min_h stays above floor base
-		var min_h = floor_y_base + maze.slab_thickness + 0.1
+		# Range: bottom of starting floor to midpoint of floor leading TO
+		var min_feet = (climbing_rope_floor - 1) * y_per + maze.slab_thickness + 0.1
+		var max_feet = (climbing_rope_floor) * y_per + maze.slab_thickness + (maze.wall_height * 0.6)
 
-		# Account for camera offset
-		position.y = clamp(position.y, min_h - 1.7, max_h - 1.7)
+		position.y = clamp(position.y, min_feet, max_feet)

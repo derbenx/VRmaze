@@ -27,11 +27,19 @@ func _ready():
 	place_player()
 
 func _input(event):
-	if event is InputEventKey and event.pressed and (event.keycode == KEY_H or event.physical_keycode == KEY_H):
-		spheres = not spheres
-		print("Maze: Toggling spheres to: ", spheres)
-		if marker_container:
-			marker_container.visible = spheres
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_H or event.physical_keycode == KEY_H:
+			spheres = not spheres
+			print("Maze: Toggling spheres. Visible: ", spheres)
+			if marker_container:
+				marker_container.visible = spheres
+
+		# Alt+Enter for Fullscreen
+		if event.keycode == KEY_ENTER and event.alt_pressed:
+			if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+			else:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 func generate_multi_floor_maze():
 	floors_data = []
@@ -300,8 +308,8 @@ func create_slab_segment(gx, gy, y_pos, mat, _is_floor):
 		d = wall_thickness
 
 	# Subtract epsilon to avoid Z-fighting on horizontal seams
-	w -= 0.005
-	d -= 0.005
+	w -= 0.01
+	d -= 0.01
 
 	var mesh = MeshInstance3D.new()
 	var box = BoxMesh.new()
@@ -331,13 +339,14 @@ func create_wall(gx, gy, y_pos):
 	else: w = wall_thickness; d = wall_thickness
 
 	# Subtract epsilon
-	w -= 0.005
-	d -= 0.005
+	w -= 0.01
+	d -= 0.01
 
-	box.size = Vector3(w, wall_height, d)
+	# Add tiny vertical gap to eliminate vertical Z-fighting with slabs
+	box.size = Vector3(w, wall_height - 0.002, d)
 	wall.mesh = box; wall.material_override = mat
-	# Center the wall so its base is exactly at y_pos
-	wall.position = Vector3(gx * cell_size / 2.0, y_pos + wall_height / 2.0, gy * cell_size / 2.0)
+	# Center the wall so its base is exactly at y_pos + gap
+	wall.position = Vector3(gx * cell_size / 2.0, y_pos + wall_height / 2.0 + 0.001, gy * cell_size / 2.0)
 	add_child(wall)
 	var sb = StaticBody3D.new(); wall.add_child(sb)
 	var cs = CollisionShape3D.new(); var bs = BoxShape3D.new()
@@ -345,13 +354,14 @@ func create_wall(gx, gy, y_pos):
 
 func create_rope(room, floor_y_base):
 	var rope = MeshInstance3D.new(); var cyl = CylinderMesh.new()
-	# Rope spans from the current floor slab through the walls and into the floor above
-	var rope_h = y_per_floor * 1.1
+	# Rope spans from the upper floor's ceiling slab down to 1/4 of current floor room height
+	var rope_h = y_per_floor + (wall_height * 0.75)
 	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = rope_h
 	rope.mesh = cyl; var mat = StandardMaterial3D.new(); mat.albedo_color = Color(0.5, 0.4, 0.2)
 	rope.material_override = mat
-	# Positioned with base at floor_y_base
-	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y_base + rope_h/2.0, room.y * cell_size - cell_size/2.0)
+	# Positioned with top at floor above's ceiling
+	var y_center = floor_y_base + slab_thickness + (wall_height * 0.25) + rope_h/2.0
+	rope.position = Vector3(room.x * cell_size - cell_size/2.0, y_center, room.y * cell_size - cell_size/2.0)
 	add_child(rope)
 	var area = Area3D.new(); area.name = "RopeArea"
 	var col = CollisionShape3D.new(); var cyl_shape = CylinderShape3D.new()
@@ -391,4 +401,5 @@ func place_player():
 	var player = get_node("../Player")
 	if player:
 		var start = floors_data[0].start_room
-		player.position = Vector3(start.x * cell_size - cell_size/2.0, 0, start.y * cell_size - cell_size/2.0)
+		# Feet should be exactly at top of floor slab
+		player.position = Vector3(start.x * cell_size - cell_size/2.0, slab_thickness + 0.05, start.y * cell_size - cell_size/2.0)

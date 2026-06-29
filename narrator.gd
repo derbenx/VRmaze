@@ -17,14 +17,13 @@ var last_zone_id = -1
 
 var idle_timer: float = 0.0
 var next_heckle_time: float = 0.0
-var is_intro_playing: bool = true
+var is_intro_playing: bool = false
 var has_found_rope: bool = false
 var has_found_down_rope: bool = false
 var has_won: bool = false
 var floors_congratulated = [] # Array to track floor indices where player was congratulated for finding rope
 var start_room_visits = {} # {floor_idx: count}
 var has_left_start_room = false
-var message_history = [] # Last 3 messages
 
 var request_queue = []
 var is_requesting = false
@@ -48,8 +47,6 @@ func _ready():
 	if http_request.request_completed.is_connected(_on_request_completed):
 		http_request.request_completed.disconnect(_on_request_completed)
 	http_request.request_completed.connect(_on_request_completed)
-
-	print("Narrator initialized. Llama URL: ", llama_url)
 
 	# Give the maze a moment to build before welcoming the player
 	get_tree().create_timer(1.0).timeout.connect(trigger_welcome)
@@ -82,7 +79,8 @@ func _process(delta):
 	if is_intro_playing:
 		return
 
-	var current_floor_idx = int(player.position.y / maze.y_per_floor)
+	# DECISION: We use the player's 'eyes' to decide which floor we're on for narration
+	var current_floor_idx = int((player.position.y + 1.6) / maze.y_per_floor)
 
 	# Handle state changes
 	if current_floor_idx != last_floor:
@@ -100,8 +98,8 @@ func _process(delta):
 
 	var data = maze.floors_data[current_floor_idx]
 	var cell_size = maze.cell_size
-	var rx = int(floor(player.position.x / cell_size)) + 1
-	var ry = int(floor(player.position.z / cell_size)) + 1
+	var rx = int(floor((player.position.x + cell_size/2.0) / cell_size))
+	var ry = int(floor((player.position.z + cell_size/2.0) / cell_size))
 	var current_pos = Vector2i(rx, ry)
 
 	var room_changed = (current_pos != last_room)
@@ -205,7 +203,7 @@ func trigger_rope_instruction(floor_idx: int):
 	send_llama_request(prompt, type)
 
 func trigger_down_rope_instruction():
-	var prompt = "Instruction: You are a " + personality + ". The player just found a climbing rope leading DOWN to the previous floor. Mock them for finding a way to go backwards or for being lost. Be sarcastic and unique, don't use 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
+	var prompt = "Instruction: You are a " + personality + ". The player just found a climbing rope leading DOWN to the previous floor. Mock them for finding a way to go backwards or for being lost. Be sarcastic and unique, don't use 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
 	prompt += "Response:"
 
 	print("Narrator: Triggering rope DOWN instruction...")
@@ -223,7 +221,7 @@ func trigger_insult(_floor_idx, zone_id, count):
 	if count > 1:
 		context = "The player has returned to the SAME dead end for the " + str(count) + " time."
 
-	var prompt = "Instruction: You are a " + personality + ". " + context + " Provide a short, mean, and witty insult. Vary your response, avoid starting with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks. Limit your response to at most " + str(sentence_limit) + " sentences.\n"
+	var prompt = "Instruction: You are a " + personality + ". " + context + " Provide a short, mean, and witty insult. Vary your response, avoid starting with 'Oh, look'. Speak directly to the player. No stage directions, sighs, or descriptions in parentheses or asterisks.\n"
 	prompt += "Response:"
 
 	print("Narrator: Insulting player for dead end zone ", zone_id, " (Visit count: ", count, ")...")
@@ -239,17 +237,11 @@ func _process_queue():
 
 	is_requesting = true
 	var item = request_queue.pop_front()
-	var base_prompt = item["prompt"]
+	var prompt = item["prompt"]
 	current_request_type = item["type"]
 
-	# Insert history into prompt to avoid repetition
-	var final_prompt = base_prompt
-	if not message_history.is_empty():
-		var history_str = "\n".join(message_history)
-		final_prompt = base_prompt.replace("Instruction:", "Instruction: Here is your recent dialogue history (avoid repeating these phrases and keep it flavourful!):\n" + history_str + "\n\nInstruction:")
-
 	var body = JSON.stringify({
-		"prompt": final_prompt,
+		"prompt": prompt,
 		"n_predict": 256,
 		"stop": ["Instruction:", "Response:", "</s>"],
 		"temperature": 0.9,
@@ -298,8 +290,6 @@ func _speak(text: String):
 	if text == "": return
 	var voices = DisplayServer.tts_get_voices_for_language("en")
 	var voice_id = voices[0] if voices.size() > 0 else ""
-	# rate: 0.1 to 10.0, default 1.0
-	# pitch: 0.0 to 2.0, default 1.0
 	DisplayServer.tts_speak(text, voice_id, 50, tts_pitch, tts_rate)
 
 func process_response(text: String):
@@ -325,11 +315,6 @@ func process_response(text: String):
 		return
 
 	print("Narrator: ", filtered_text)
-
-	# Update history
-	message_history.append(filtered_text)
-	if message_history.size() > 3:
-		message_history.pop_front()
 
 	# Godot TTS
 	_speak(filtered_text)
