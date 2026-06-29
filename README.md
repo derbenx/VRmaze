@@ -22,5 +22,6 @@ They should find each other automatically and your game should start insulting y
 
 WADS to move around, mouse to look.
 Q/E to climb up/down.
-H for hints
-ESC to unbind/bind mouse
+ESC to unbind/bind mouse.
+H for hints/spoilers.
+
