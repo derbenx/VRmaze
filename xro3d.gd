@@ -47,9 +47,8 @@ func check_rope() -> void:
 	for area in rope_detector.get_overlapping_areas():
 		if area.name == "RopeArea":
 			near_rope = true
-			if maze:
-				# Identifying the floor the rope LEADS TO based on its center
-				climbing_rope_floor = int(area.global_position.y / maze.y_per_floor)
+			if area.has_meta("leads_to"):
+				climbing_rope_floor = area.get_meta("leads_to")
 			break
 
 func on_leave_rope() -> void:
@@ -120,6 +119,7 @@ func handle_movement(delta: float) -> void:
 		var y_per = maze.y_per_floor
 
 		# Allow climbing from eye-level of current floor to eye-level of target floor
+		# Feet can travel from base of current floor to base of target floor + eyes
 		var min_feet = (climbing_rope_floor - 1) * y_per + maze.slab_thickness + 0.1
 		var max_feet = (climbing_rope_floor) * y_per + maze.slab_thickness + (maze.wall_height * 0.6)
 

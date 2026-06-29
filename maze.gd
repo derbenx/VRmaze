@@ -283,8 +283,9 @@ func build_floor(f_idx, data, floor_y_base):
 			if grid[y][x] == 1:
 				create_wall(x, y, wall_y_start)
 
-	# Create rope for all floors including the last one (to the roof)
-	create_rope(data.end_room, floor_y_base)
+	# Create rope for each floor's exit.
+	# Each rope will span from current floor up through the floor above, hanging from its ceiling.
+	create_rope(data.end_room, f_idx)
 
 	# Always visualize path so it can be toggled via H key
 	visualize_path(data, floor_y_base + slab_thickness)
@@ -353,21 +354,29 @@ func create_wall(gx, gy, y_pos):
 	var cs = CollisionShape3D.new(); var bs = BoxShape3D.new()
 	bs.size = box.size; cs.shape = bs; sb.add_child(cs)
 
-func create_rope(room, floor_y_base):
+func create_rope(room, f_idx):
+	var floor_y_base = f_idx * y_per_floor
 	var rope = MeshInstance3D.new(); var cyl = CylinderMesh.new()
-	# Rope spans from the floor below up through the hole into the floor above.
-	# It hangs from the upper ceiling (slab_thickness + wall_height + slab_thickness).
-	# Bottom end is at 0.25 room height of current floor.
-	var rope_h = y_per_floor + (wall_height * 0.75)
+
+	# Rope spans two levels: from the ceiling of the target floor (f_idx + 1)
+	# down to 1/4 of the current floor (f_idx) height.
+	# Top: floor_y_base(f_idx+1) + slab + wall + slab
+	# Bottom: floor_y_base(f_idx) + slab + 0.25*wall
+	var rope_h = y_per_floor + (wall_height * 0.75) + slab_thickness
+
 	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = rope_h
 	rope.mesh = cyl; var mat = StandardMaterial3D.new(); mat.albedo_color = Color(0.5, 0.4, 0.2)
 	rope.material_override = mat
-	# Top of rope is at floor_y_base + y_per_floor + slab_thickness (ceiling top)
-	# Position is center. y_center = top - rope_h/2.0
-	var y_center = (floor_y_base + y_per_floor + slab_thickness) - (rope_h / 2.0)
+
+	# Top is at next floor's ceiling top.
+	var top_y = (f_idx + 1) * y_per_floor + slab_thickness + wall_height + slab_thickness
+	var y_center = top_y - (rope_h / 2.0)
 	rope.position = Vector3(room.x * cell_size - cell_size/2.0, y_center, room.y * cell_size - cell_size/2.0)
 	add_child(rope)
+
 	var area = Area3D.new(); area.name = "RopeArea"
+	area.set_meta("leads_to", f_idx + 1)
+
 	var col = CollisionShape3D.new(); var cyl_shape = CylinderShape3D.new()
 	cyl_shape.radius = 0.5; cyl_shape.height = rope_h
 	col.shape = cyl_shape; area.add_child(col); rope.add_child(area)

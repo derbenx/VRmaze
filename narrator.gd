@@ -98,11 +98,9 @@ func _process(delta):
 
 	var data = maze.floors_data[current_floor_idx]
 	var cell_size = maze.cell_size
-	# Room center detection (+0.5 logic) flips exactly at halfway point (0-2, 2-4, 4-6...)
-	# Maze rooms are centered at 0.5, 1.5, 2.5, 3.5 ... * cell_size
-	# To map pos to 1, 2, 3... use int(floor(pos / cell_size)) + 1
-	var rx = int(floor(player.position.x / cell_size)) + 1
-	var ry = int(floor(player.position.z / cell_size)) + 1
+	# More accurate room center detection (+0.5 logic) flips at halfway points.
+	var rx = int(floor(player.position.x / cell_size + 0.5))
+	var ry = int(floor(player.position.z / cell_size + 0.5))
 	var current_pos = Vector2i(rx, ry)
 
 	var room_changed = (current_pos != last_room)
