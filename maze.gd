@@ -34,7 +34,8 @@ func _input(event):
 			if marker_container:
 				marker_container.visible = spheres
 
-		# Alt+Enter for Fullscreen
+		# Fullscreen logic can be problematic in VR embedded windows.
+		# If it fails, we simply log it and continue.
 		if event.keycode == KEY_ENTER and event.alt_pressed:
 			if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
 				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
@@ -354,14 +355,16 @@ func create_wall(gx, gy, y_pos):
 
 func create_rope(room, floor_y_base):
 	var rope = MeshInstance3D.new(); var cyl = CylinderMesh.new()
-	# Rope spans from the upper floor's ceiling slab down to 1/4 of current floor room height
-	var rope_h = y_per_floor + (wall_height * 0.75)
+	# Rope hangs from the upper floor's ceiling slab, ending 1/4 wall_height above the floor.
+	# Total span: slab_thickness + wall_height * 0.75 (within room) + slab_thickness (of floor above)
+	# Simplification: Spans from ceiling base down to 0.25 room height.
+	var rope_h = wall_height * 0.75 + slab_thickness
 	cyl.top_radius = 0.05; cyl.bottom_radius = 0.05; cyl.height = rope_h
 	rope.mesh = cyl; var mat = StandardMaterial3D.new(); mat.albedo_color = Color(0.5, 0.4, 0.2)
 	rope.material_override = mat
-	# Positioned with top at floor above's ceiling
-	var y_center = floor_y_base + slab_thickness + (wall_height * 0.25) + rope_h/2.0
-	rope.position = Vector3(room.x * cell_size - cell_size/2.0, y_center, room.y * cell_size - cell_size/2.0)
+	# Top of rope is at floor_y_base + y_per_floor (base of floor above)
+	# Center is at floor_y_base + y_per_floor - rope_h/2.0
+	rope.position = Vector3(room.x * cell_size - cell_size/2.0, floor_y_base + y_per_floor - rope_h/2.0, room.y * cell_size - cell_size/2.0)
 	add_child(rope)
 	var area = Area3D.new(); area.name = "RopeArea"
 	var col = CollisionShape3D.new(); var cyl_shape = CylinderShape3D.new()
@@ -398,8 +401,8 @@ func visualize_path(data, floor_y):
 		marker_container.add_child(m)
 
 func place_player():
-	var player = get_node("../Player")
+	var player = get_node_or_null("../Player")
 	if player:
 		var start = floors_data[0].start_room
 		# Feet should be exactly at top of floor slab
-		player.position = Vector3(start.x * cell_size - cell_size/2.0, slab_thickness + 0.05, start.y * cell_size - cell_size/2.0)
+		player.position = Vector3(start.x * cell_size - cell_size/2.0, slab_thickness + 0.1, start.y * cell_size - cell_size/2.0)

@@ -98,8 +98,9 @@ func _process(delta):
 
 	var data = maze.floors_data[current_floor_idx]
 	var cell_size = maze.cell_size
-	var rx = int(floor((player.position.x + cell_size/2.0) / cell_size))
-	var ry = int(floor((player.position.z + cell_size/2.0) / cell_size))
+	# More precise centering to avoid triggering through walls
+	var rx = int(floor(player.position.x / cell_size + 0.5))
+	var ry = int(floor(player.position.z / cell_size + 0.5))
 	var current_pos = Vector2i(rx, ry)
 
 	var room_changed = (current_pos != last_room)

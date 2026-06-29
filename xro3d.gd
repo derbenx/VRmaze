@@ -56,7 +56,7 @@ func on_leave_rope() -> void:
 	if maze and climbing_rope_floor != -1:
 		# Snap camera to 0.5 of room height relative to current floor
 		var y_per = maze.y_per_floor
-		var target_floor = floor((position.y + 0.9) / y_per)
+		var target_floor = floor((position.y + 1.6) / y_per)
 		var floor_y_base = target_floor * y_per
 
 		# Set position so camera is at 0.5 room height
@@ -119,8 +119,9 @@ func handle_movement(delta: float) -> void:
 	if near_rope and maze and climbing_rope_floor != -1:
 		var y_per = maze.y_per_floor
 
+		# Current floor being LEAVING (if going up) is climbing_rope_floor - 1
 		# Range: bottom of starting floor to midpoint of floor leading TO
-		var min_feet = (climbing_rope_floor - 1) * y_per + maze.slab_thickness + 0.1
-		var max_feet = (climbing_rope_floor) * y_per + maze.slab_thickness + (maze.wall_height * 0.6)
+		var min_eyes = (climbing_rope_floor - 1) * y_per + maze.slab_thickness + 0.1
+		var max_eyes = (climbing_rope_floor) * y_per + maze.slab_thickness + (maze.wall_height * 0.5)
 
-		position.y = clamp(position.y, min_feet, max_feet)
+		position.y = clamp(position.y, min_eyes - 1.7, max_eyes - 1.7)
