@@ -4,6 +4,7 @@ extends Node3D
 @export var personality: String = "Instruction: You are a narrator for this maze game. It's a simple maze, with empty rooms. You are charmingly sarcastic and irritatingly insulting. You sometimes *try* and be nice but fail at it. Speak directly to the player, keep the words simple, their IQ is low. No stage directions or descriptions. Limit your response to at most 2-3 sentences and try to make each sentence unique. Avoid saying 'oh look'. "
 @export var tts_rate: float = 1.15
 @export var tts_pitch: float = 1.05
+@export var debug: int = 0
 
 @onready var http_request: HTTPRequest = $HTTPRequest
 @onready var maze = get_node_or_null("../maze")
@@ -248,7 +249,7 @@ func _process_queue():
 
 	var body = JSON.stringify({
 		"prompt": prompt,
-		"n_predict": 256,
+		"n_predict": 512,
 		"stop": ["Instruction:", "Response:", "</s>"],
 		"temperature": 0.9,
 		"top_p": 0.9,
@@ -272,6 +273,9 @@ func _on_request_completed(_result, response_code, _headers, body):
 		is_intro_playing = false
 
 	var body_str = body.get_string_from_utf8()
+	if debug == 1:
+		print("Narrator Debug: Raw Response Body: ", body_str)
+
 	if response_code == 200:
 		var json = JSON.parse_string(body_str)
 		if json and json.has("content"):
@@ -299,6 +303,9 @@ func _speak(text: String):
 	DisplayServer.tts_speak(text, voice_id, 50, tts_pitch, tts_rate)
 
 func process_response(text: String):
+	if debug == 1:
+		print("Narrator Debug: Raw Text: '", text, "'")
+
 	# 1. Strip thought tags
 	var filtered_text = text
 	var thought_regex = RegEx.new()
@@ -316,8 +323,12 @@ func process_response(text: String):
 	# 3. Final cleanup
 	filtered_text = filtered_text.strip_edges()
 
+	if debug == 1:
+		print("Narrator Debug: Filtered Text: '", filtered_text, "'")
+
 	if filtered_text == "":
 		print("Narrator: (Received empty response content)")
+		_trigger_fallback(current_request_type)
 		return
 
 	print("Narrator: ", filtered_text)
