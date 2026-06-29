@@ -22,4 +22,5 @@ They should find each other automatically and your game should start insulting y
 
 WADS to move around, mouse to look.
 Q/E to climb up/down.
-alt+enter for full screen.
+H for hints
+ESC to unbind/bind mouse
