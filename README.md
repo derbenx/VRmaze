@@ -12,7 +12,9 @@ if you have at least 6gb vram and a nvidia card, "x64 CUDA 13" "CUDA 13 DLL" (yo
 Download the release of the compiled version, click releases on the right. (Unless you really want to grab the code and try to figure that out.)
 
 extract all of the gemma AI and llama stuff into a folder. Make a bat file containing:
-.\llama-server.exe -m gemma-4-E4B-it-UD-Q8_K_XL.gguf --reasoning off --frequency-penalty 0.5 --repeat-penalty 1.18 --temp 0.88 
+
+<code> .\llama-server.exe -m gemma-4-E4B-it-UD-Q8_K_XL.gguf --reasoning off --frequency-penalty 0.5 --repeat-penalty 1.18 --temp 0.88 </code>
+
 ** remember to substitute the right filename for your version of gemma in there.
 
 Run the bat file to start the AI server. Run the extracted godot game on the same PC.
